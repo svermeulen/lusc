@@ -1,4 +1,8 @@
 return {
-   source_dir = ".",
-   include_dir = { "." },
+   build_dir = "gen",
+   source_dir = "src",
+   include_dir = { "src" },
+   include = {
+      "**/*.tl"
+   },
 }
