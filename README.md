@@ -13,7 +13,7 @@ Simple Examples
 
 Run multiple tasks in parallel:
 
-```
+```lua
 local lusc = require("lusc")
 
 local function main()
@@ -52,7 +52,7 @@ Therefore `lusc.run` returns a coroutine that yields with the number of seconds 
 
 If running in a Linux/OSX environment a simple way to achieve this would be the following (which you can execute for yourself by running the lua files in the `examples/` folder):
 
-```
+```lua
 -- NOTE: Do not use this function in a real app
 local function run(entry_point:function(lusc.Nursery))
    local pending_jobs = {entry_point}
@@ -94,7 +94,7 @@ For example, if you are ok with adding a dependency to [Luv](https://github.com/
 API Reference
 ---
 
-```
+```teal
 -- Public API for Lusc
 local record lusc
    -- Pass QUIT_SIGNAL this to the lusc.run coroutine.resume
