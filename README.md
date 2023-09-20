@@ -1,6 +1,5 @@
 
-Lusc - Structured Async/Concurrency for Lua
------
+## Lusc - Structured Async/Concurrency for Lua
 
 Lusc brings the concepts of [Structured Concurrency](https://en.wikipedia.org/wiki/Structured_concurrency) to Lua.  The name is an abbrevriation of this (**LU**a **S**tructured **C**oncurrency).
 
@@ -48,9 +47,9 @@ For more complex examples please see the [lusc_luv tests here](https://github.co
 Running the examples
 ---
 
-You might notice that in the examples above, we are not calling the `main()` functions directly.  This is because, similar to trio, these all need to be executed underneath a `lusc.run` function.  However, unlike Trio, in order to call this function, the user has to supply implementations for `sleep` and `get_time` functions, since these vary depending on the environment where you are running Lua.
+You might notice that in the examples above, we are not calling the `main()` functions directly.  This is because, similar to trio, all `lusc.X` methods need to be executed underneath a `lusc.run` function.  However, unlike Trio, in order to call `lusc.run`, the user has to supply implementations for `sleep` and `get_time`. This is necessary since this functionality varies depending on the environment where you are running Lua.
 
-Therefore `lusc.run` returns a coroutine that yields with the number of seconds to sleep, and so the calling code needs to handle that.
+`lusc.run` takes a `time_provider` that should return the time, and then returns a coroutine that yields with the number of seconds to sleep, and so the calling code needs to handle that.
 
 If running in a Linux/OSX environment a simple way to achieve this would be the following (which you can execute for yourself by running the lua files in the `examples/` folder):
 
@@ -89,7 +88,7 @@ However - This approach has many limitations:
 * `os.execute("sleep x")` is not cross platform (windows would require a different command)
 * Using `os.execute` for sleep is a fairly heavy operation
 
-Instead, you should use lusc on top of something else that can provide better implementations for sleep() and time_provider.
+Instead, you should use lusc on top of something else that can provide better implementations for sleep() and get_time().
 
 For example, if you are ok with adding a dependency to [Luv](https://github.com/luvit/luv) you can use [lusc_luv](https://github.com/svermeulen/lusc_luv) to provide wrap the `lusc.run` function for you
 
