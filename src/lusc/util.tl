@@ -1,7 +1,10 @@
 
-local Try <const> = require("lusc.util.try")
-
 local record util
+   record TryOpts<T>
+      action:function():T
+      catch:function(err:any):T
+      finally:function()
+   end
 end
 
 local _log_handler:function(string) = nil
@@ -87,8 +90,34 @@ function util.partial_func1<P1, TReturn>(action:(function(P1):TReturn), p1:P1):(
    end
 end
 
-function util.try<T>(opts:Try.Opts<T>):T
-   return Try(opts)
+local function _on_error(error_obj:string):any
+  return debug.traceback(error_obj, 2)
+end
+
+function util.try<T>(t:util.TryOpts<T>):T
+  local success, ret_value = xpcall(t.action, _on_error)
+  if success then
+    if t.finally then
+      t.finally()
+    end
+    return ret_value
+  end
+  if not t.catch then
+    if t.finally then
+      t.finally()
+    end
+    error(ret_value, 2)
+  end
+  success, ret_value = xpcall((function():T
+    return t.catch(ret_value)
+  end), _on_error) as (boolean, T)
+  if t.finally then
+    t.finally()
+  end
+  if success then
+    return ret_value
+  end
+  return error(ret_value, 2)
 end
 
 function util.throws(action:function())
