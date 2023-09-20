@@ -8,7 +8,7 @@ This programming paradigm was first popularized by the python library [Trio](htt
 
 If you aren't familiar with Trio, and also aren't familiar with [Structured Concurrency](https://en.wikipedia.org/wiki/Structured_concurrency), then it might be a good idea to read some of the [trio docs](https://trio.readthedocs.io/en/stable/reference-core.html) since they are much better than what you'll read here.
 
-Simple Examples
+Simple Example
 ---
 
 Run multiple tasks in parallel:
@@ -42,6 +42,8 @@ local function main()
    print("Completed all child tasks")
 end
 ```
+
+For more complex examples please see the [lusc_luv tests here](https://github.com/svermeulen/lusc_luv/blob/main/gen/lusc_luv/tests/lusc_spec.lua).  If you're able to read through each of those tests, and understand what's going on, then you're in great shape to use Lusc in your own projects.
 
 Running the examples
 ---
