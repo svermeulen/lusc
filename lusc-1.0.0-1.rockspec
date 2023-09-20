@@ -17,6 +17,7 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
-      lusc = "gen/lusc/init.tl"
+      lusc = "gen/lusc/init.lua"
+      ["lusc.util"] = "gen/lusc/util.lua"
    },
 }
