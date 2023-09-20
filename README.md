@@ -205,7 +205,7 @@ return lusc
 
 # Strong Typing Support
 
-Note that this library is implemented using [Teal](https://github.com/teal-language/tl) and that all the lua files here are generated.  If you are also using Teal, and want your calls to the text-to-colorscheme API strongly typed, you can copy and paste the teal type definition files from `/dist/lusc.d.tl` into your project (or just add a path directly to the source code here in your tlconfig.lua file)
+Note that this library is implemented using [Teal](https://github.com/teal-language/tl) and that all the lua files here are generated.  If you are also using Teal, and want your calls to the lusc API strongly typed, you can copy and paste the teal type definition files from `/dist/lusc.d.tl` into your project (or just add a path directly to the source code here in your tlconfig.lua file)
 
 History / Credits
 ---
