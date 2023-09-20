@@ -30,7 +30,7 @@ local record lusc
    end
 
    record ErrorGroup
-      _errors:{any}
+      errors:{any}
    end
 
    record Task
@@ -186,7 +186,7 @@ function lusc.ErrorGroup.new(errors:{any}):lusc.ErrorGroup
    -- receivers
    for _, err in ipairs(errors) do
       if util.is_instance(err, lusc.ErrorGroup) then
-         for _, sub_error in ipairs((err as lusc.ErrorGroup)._errors) do
+         for _, sub_error in ipairs((err as lusc.ErrorGroup).errors) do
             util.assert(not util.is_instance(sub_error, lusc.ErrorGroup))
             add_error(sub_error)
          end
@@ -197,14 +197,14 @@ function lusc.ErrorGroup.new(errors:{any}):lusc.ErrorGroup
 
    return setmetatable(
       {
-         _errors = adjusted_errors,
+         errors = adjusted_errors,
       } as lusc.ErrorGroup,
       { __index = lusc.ErrorGroup } as metatable<lusc.ErrorGroup>)
 end
 
 function lusc.ErrorGroup:__tostring():string
    local lines = {}
-   for _, err in ipairs(self._errors) do
+   for _, err in ipairs(self.errors) do
       table.insert(lines, tostring(err))
    end
    return table.concat(lines, '\n')
@@ -752,7 +752,7 @@ function lusc._Runner:_is_cancelled_error(err:any):boolean
    if util.is_instance(err, lusc.ErrorGroup) then
       -- Note that the logic in ErrorGroup should guarantee that we don't 
       -- get duplicate instances of cancelled here
-      local all_errors = (err as lusc.ErrorGroup)._errors
+      local all_errors = (err as lusc.ErrorGroup).errors
       return #all_errors == 1 and all_errors[1] == _CANCELLED
    end
 
