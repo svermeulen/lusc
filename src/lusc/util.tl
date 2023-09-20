@@ -120,7 +120,7 @@ function util.try<T>(t:util.TryOpts<T>):T
   return error(ret_value, 2)
 end
 
-function util.throws(action:function())
+function util.assert_throws(action:function())
    local ok = pcall(action)
    if ok then
       error("Expected exception when calling given function but no error was found!")

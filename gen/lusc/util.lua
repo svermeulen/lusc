@@ -120,7 +120,7 @@ function util.try(t)
    return error(ret_value, 2)
 end
 
-function util.throws(action)
+function util.assert_throws(action)
    local ok = pcall(action)
    if ok then
       error("Expected exception when calling given function but no error was found!")
