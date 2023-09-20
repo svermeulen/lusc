@@ -94,8 +94,11 @@ For example, if you are ok with adding a dependency to [Luv](https://github.com/
 API Reference
 ---
 
-```teal
--- Public API for Lusc
+```lua
+
+-- NOTE - The code here is not valid Lua code - it is Teal code, which gets
+-- compiled to Lua
+-- But can be used as reference for your lua code to understand the API and the methods/types
 local record lusc
    -- Pass QUIT_SIGNAL this to the lusc.run coroutine.resume
    QUIT_SIGNAL:any
