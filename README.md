@@ -1,5 +1,5 @@
 
-## Lusc - Structured Async/Concurrency for Lua
+# Lusc - Structured Async/Concurrency for Lua
 
 Lusc brings the concepts of [Structured Concurrency](https://en.wikipedia.org/wiki/Structured_concurrency) to Lua.  The name is an abbrevriation of this (**LU**a **S**tructured **C**oncurrency).
 
