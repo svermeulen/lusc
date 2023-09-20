@@ -12,6 +12,11 @@ Installation
 
 `luarocks install lusc`
 
+Compatibility
+---
+
+Lusc is written in pure Lua, so should work on Linux/OSX/Windows, and does not use any Lua langauge features beyond Lua 5.1, so should be compatible with most Lua environments (including LuaJIT).
+
 Simple Example
 ---
 
