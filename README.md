@@ -7,6 +7,11 @@ This programming paradigm was first popularized by the python library [Trio](htt
 
 If you aren't familiar with Trio, and also aren't familiar with [Structured Concurrency](https://en.wikipedia.org/wiki/Structured_concurrency), then it might be a good idea to read some of the [trio docs](https://trio.readthedocs.io/en/stable/reference-core.html) since they are much better than what you'll read here.
 
+Installation
+---
+
+`luarocks install lusc`
+
 Simple Example
 ---
 
