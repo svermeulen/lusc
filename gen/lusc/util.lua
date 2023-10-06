@@ -13,14 +13,14 @@ function util.is_log_enabled()
    return _log_handler ~= nil
 end
 
+function util.set_log_handler(log_handler)
+   _log_handler = log_handler
+end
+
 function util.log(format, ...)
    if util.is_log_enabled() then
       _log_handler(string.format(format, ...))
    end
-end
-
-function util.set_log_handler(log_handler)
-   _log_handler = log_handler
 end
 
 function util.map_is_empty(values)
@@ -53,7 +53,11 @@ end
 
 function util.assert(condition, format, ...)
    if not condition then
-      error(string.format(format, ...))
+      if format == nil then
+         error("Assert hit in lusc library")
+      else
+         error(string.format(format, ...))
+      end
    end
 end
 
