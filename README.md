@@ -59,35 +59,23 @@ Running the examples
 
 You might notice that in the examples above, we are not calling the `main()` functions directly.  This is because, similar to trio, all `lusc.X` methods need to be executed underneath a `lusc.run` function.  However, unlike Trio, in order to call `lusc.run`, the user has to supply implementations for `sleep` and `get_time`. This is necessary since this functionality varies depending on the environment where you are running Lua.
 
-`lusc.run` takes a `time_provider` that should return the time, and then returns a coroutine that yields with the number of seconds to sleep, and so the calling code needs to handle that.
+`lusc.run` takes a `time_provider` that should be a function that return the current time in seconds (which doesn't have to be the actual time, but just a time value that starts from some arbitrary point in the past) and also a `sleep_handler` function that performs a sleep with a given number of seconds.
 
 If running in a Linux/OSX environment a simple way to achieve this would be the following (which you can execute for yourself by running the lua files in the `examples/` folder):
 
 ```lua
 -- NOTE: Do not use this function in a real app
-local function run(entry_point:function(lusc.Nursery))
-   local pending_jobs = {entry_point}
-   local coro = lusc.run {
-      time_provider = function():number
+
+local function run(entry_point)
+   lusc.run({
+      entry_point = entry_point,
+      time_provider = function()
          return os.time()
       end,
-   }
-
-   while true do
-      local ok, result = coroutine.resume(coro, pending_jobs)
-      pending_jobs = {}
-
-      if not ok then
-         error(result)
-      end
-
-      if result == lusc.NO_MORE_TASKS_SIGNAL then
-         break
-      end
-
-      local seconds = result as number
-      os.execute("sleep " .. tostring(seconds))
-   end
+      sleep_handler = function(seconds)
+         os.execute("sleep " .. tostring(seconds))
+      end,
+   })
 end
 
 run(main)
@@ -100,7 +88,7 @@ However - This approach has many limitations:
 
 Instead, you should use lusc on top of something else that can provide better implementations for sleep() and get_time().
 
-For example, if you are ok with adding a dependency to [Luv](https://github.com/luvit/luv) you can use [lusc_luv](https://github.com/svermeulen/lusc_luv) to provide wrap the `lusc.run` function for you
+For example, if you are ok with adding a dependency to [Luv](https://github.com/luvit/luv) you can use [lusc_luv](https://github.com/svermeulen/lusc_luv) instead
 
 API Reference
 ---
@@ -111,12 +99,6 @@ API Reference
 -- compiled to Lua
 -- But can be used as reference for your lua code to understand the API and the methods/types
 local record lusc
-   -- Pass QUIT_SIGNAL this to the lusc.run coroutine.resume
-   QUIT_SIGNAL:any
-
-   -- yielded by the lusc.run coroutine to indicate that all tasks have completed
-   NO_MORE_TASKS_SIGNAL:any
-
    -- Parameter for lusc.run method
    record Opts
       -- When true, will generate unique names for all tasks and nurseries, which
@@ -124,9 +106,15 @@ local record lusc
       -- Default: false
       generate_debug_names:boolean
 
-      -- Required function provided by user
+      -- Required.
       -- Should return fractional time in seconds from an arbitrary reference point
       time_provider:function():number
+
+      -- Required. Should sleep the given number of seconds
+      sleep_handler:function(seconds:number)
+
+      -- Required. The entry point for your app.  Can optionally take the main nursery
+      entry_point:function(Nursery)
    end
 
    -- When running multiple tasks in parallel, it is possible for multiple
@@ -194,7 +182,7 @@ local record lusc
    end
 
    -- Entry point for lusc
-   run:function(opts:Opts):thread
+   run:function(opts:Opts)
 
    -- Pass in a custom log method here to get extra debugging info to see
    -- what all your nurseries/tasks are doing

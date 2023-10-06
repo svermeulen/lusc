@@ -3,12 +3,6 @@
 -- When using teal with lusc, you can copy and paste this file into your project for strong type checks
 -- Or use lusc source code directly instead
 local record lusc
-   -- Pass QUIT_SIGNAL this to the lusc.run coroutine.resume
-   QUIT_SIGNAL:any
-
-   -- yielded by the lusc.run coroutine to indicate that all tasks have completed
-   NO_MORE_TASKS_SIGNAL:any
-
    -- Parameter for lusc.run method
    record Opts
       -- When true, will generate unique names for all tasks and nurseries, which
@@ -19,6 +13,12 @@ local record lusc
       -- Required function provided by user
       -- Should return fractional time in seconds from an arbitrary reference point
       time_provider:function():number
+
+      -- Should sleep the given number of seconds
+      sleep_handler:function(seconds:number)
+
+      -- The entry point for your app.  Can optionally take the main nursery
+      entry_point:function(Nursery)
    end
 
    -- When running multiple tasks in parallel, it is possible for multiple
@@ -88,7 +88,7 @@ local record lusc
    end
 
    -- Entry point for lusc
-   run:function(opts:Opts):thread
+   run:function(opts:Opts)
 
    -- Pass in a custom log method here to get extra debugging info to see
    -- what all your nurseries/tasks are doing
