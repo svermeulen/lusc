@@ -194,7 +194,7 @@ local record lusc
    await_forever:function()
    await_until_time:function(until_time:number)
    await_sleep:function(seconds:number)
-   get_current_time:function():number
+   get_time:function():number
    open_nursery:function(handler:function(nursery:Nursery), opts:Nursery.Opts):Nursery.Result
 end
 
