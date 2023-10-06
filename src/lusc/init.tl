@@ -18,15 +18,14 @@ local _NO_ERROR = setmetatable({}, {__tostring=function():string return '<no_err
 local _CANCELLED = setmetatable({}, {__tostring=function():string return '<cancelled>' end})
 
 local record lusc
-   QUIT_SIGNAL:any
-   NO_MORE_TASKS_SIGNAL:any
-
    record Opts
       -- Default: false
       generate_debug_names:boolean
 
       -- should returns fractional time in seconds from an arbitrary reference point
       time_provider:function():number
+      sleep_handler:function(seconds:number)
+      entry_point:function(Nursery)
    end
 
    record ErrorGroup
@@ -92,6 +91,7 @@ local record lusc
 
       _id: integer
       _deadline: number
+      _is_closed: boolean
       _should_fail_on_deadline: boolean
       _debug_task_tree:string
       _debug_nursery_tree:string
@@ -117,10 +117,11 @@ local record lusc
       -- list sorted by wait_until, nearest time last
       _tasks: {Task}
 
+      _sleep_handler:function(number)
       _pending_error_tasks: {Task}
       _pending_error_tasks_set: {Task:boolean}
-      _main_task: Task
       _main_nursery: Nursery
+      _main_task: Task
       _opts: Opts
       _requested_quit:boolean
 
@@ -139,9 +140,6 @@ local record lusc
 
    _current_runner:lusc._Runner
 end
-
-lusc.QUIT_SIGNAL = setmetatable({}, {__tostring=function():string return '<quit_signal>' end})
-lusc.NO_MORE_TASKS_SIGNAL = setmetatable({}, {__tostring=function():string return '<no_more_tasks_signal>' end})
 
 -- *********** util ***********
 
@@ -357,6 +355,7 @@ function lusc.Nursery.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Nursery
          _cancel_requested_from_deadline = false,
          _debug_task_tree = task._debug_task_tree,
          _deadline = nil,
+         _is_closed = false,
          _should_fail_on_deadline = nil,
          _deadline_task = nil,
          _debug_nursery_tree = nil,
@@ -366,6 +365,8 @@ function lusc.Nursery.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Nursery
 end
 
 function lusc.Nursery:initialize()
+   util.assert(not self._is_closed)
+
    local name = self._opts.name
 
    if name == nil then
@@ -444,6 +445,7 @@ function lusc.Nursery:initialize()
 end
 
 function lusc.Nursery:start_soon(task_handler:function(), opts:lusc.Task.Opts):lusc.Task
+   util.assert(not self._is_closed, "Cannot add tasks to closed nursery")
    local task = self._runner:_create_new_task_and_schedule(task_handler, self, nil, opts)
    util.assert(self._child_tasks[task] == nil)
    self._child_tasks[task] = true
@@ -483,10 +485,17 @@ function lusc.Nursery:_cancel(from_deadline:boolean)
 end
 
 function lusc.Nursery:cancel()
+   if self._is_closed then
+      _log("Attempted to cancel closed nursery [%s]. Ignoring request", self._debug_nursery_tree)
+      return
+   end
+
    self:_cancel(false)
 end
 
 function lusc.Nursery:close(nursery_err:any):lusc.Nursery.Result
+   util.assert(not self._is_closed)
+
    if util.is_log_enabled() then
       if util.map_is_empty(self._child_tasks) then
          _log("Closing nursery [%s] with zero tasks pending", self._debug_nursery_tree)
@@ -517,22 +526,30 @@ function lusc.Nursery:close(nursery_err:any):lusc.Nursery.Result
       self._deadline_task:_enqueue_pending_error(_CANCELLED)
    end
 
-   for task, _ in pairs(self._child_tasks) do
-      util.try {
-         action = function():nil task._done:await() end,
-         catch = function(child_err:any):nil
-            if self._deadline_task == task then
-               -- Don't propagate in this case
-               -- Timeout failure is added as an error below instead
-               util.assert(self._runner:_is_cancelled_error(child_err))
-            else
-               _log("Encountered error while waiting for task [%s] to complete while closing nursery [%s]: %s", task._debug_task_tree, self._debug_nursery_tree, child_err)
-               table.insert(all_errors, child_err)
-            end
-         end
-      }
+   -- Note here that more child tasks can be added while we are iterating over the list
+   while not util.map_is_empty(self._child_tasks) do
+      for task, _ in pairs(self._child_tasks) do
+         util.try {
+            action = function():nil task._done:await() end,
+            catch = function(child_err:any):nil
+               if self._deadline_task == task then
+                  -- Don't propagate in this case
+                  -- Timeout failure is added as an error below instead
+                  util.assert(self._runner:_is_cancelled_error(child_err))
+               else
+                  _log("Encountered error while waiting for task [%s] to complete while closing nursery [%s]: %s", task._debug_task_tree, self._debug_nursery_tree, child_err)
+                  table.insert(all_errors, child_err)
+               end
+            end,
+            finally = function():nil
+               util.assert(task._done.is_set)
+               self._child_tasks[task] = nil
+            end,
+         }
+      end
    end
 
+   self._is_closed = true
    util.assert(util.map_is_empty(self._child_nurseries), "[lusc][%s] Found non empty list of child nurseries at end of closing nursery [%s]", self._debug_task_tree, self._debug_nursery_tree)
 
    if self._parent_nursery ~= nil then
@@ -570,15 +587,16 @@ function lusc._Runner.new(opts:lusc.Opts):lusc._Runner
    util.assert(opts ~= nil, "No options provided to lusc")
 
    util.assert(opts.time_provider ~= nil, "Missing value for time_provider")
+   util.assert(opts.sleep_handler ~= nil, "Missing value for sleep_handler")
 
    return setmetatable(
       {
          _tasks_by_coro = {},
          _tasks = {},
+         _sleep_handler = opts.sleep_handler,
          _opts = opts,
          _pending_error_tasks = {},
          _pending_error_tasks_set = {},
-         _main_task = nil,
          _main_nursery = nil,
          _requested_quit = false,
       } as lusc._Runner,
@@ -720,6 +738,10 @@ function lusc._Runner:_create_new_task_and_schedule(task_handler:function(), nur
    return task
 end
 
+function lusc.set_log_handler(log_handler:function(string))
+   util.set_log_handler(log_handler)
+end
+
 function lusc._Runner:_on_task_errored(task:lusc.Task, error_obj:any)
    -- Must grab the traceback before unwinding stack for some reason
    local traceback = debug.traceback(task._coro)
@@ -822,7 +844,7 @@ function lusc._Runner:_run_task(task:lusc.Task)
    end
 end
 
-function lusc._Runner:_open_nursery(handler:function(lusc.Nursery), opts:lusc.Nursery.Opts):lusc.Nursery.Result
+function lusc._Runner:_create_nursery(opts:lusc.Nursery.Opts):lusc.Nursery
    opts = opts or {}
 
    local current_task = self:_get_running_task()
@@ -834,6 +856,11 @@ function lusc._Runner:_open_nursery(handler:function(lusc.Nursery), opts:lusc.Nu
 
    local nursery = lusc.Nursery.new(self, current_task, opts)
    nursery:initialize()
+   return nursery
+end
+
+function lusc._Runner:_open_and_close_nursery(handler:function(lusc.Nursery), opts:lusc.Nursery.Opts):lusc.Nursery.Result
+   local nursery = self:_create_nursery(opts)
    local run_err:any = nil
    util.try {
       action = function():nil
@@ -850,28 +877,6 @@ function lusc._Runner:_remove_task_from_queue(task:lusc.Task)
    table.remove(self._tasks, index)
 end
 
-function lusc._Runner:_yield_to_user(send_arg:any):{function(lusc.Nursery):nil}
-   util.assert(lusc._current_runner == self)
-   lusc._current_runner = nil
-   local received_arg = coroutine.yield(send_arg)
-   lusc._current_runner = self
-
-   if received_arg == lusc.QUIT_SIGNAL then
-      self._requested_quit = true
-      return {}
-   end
-
-   util.assert(received_arg is table)
-   local entry_points:{function(lusc.Nursery):nil} = {}
-
-   for _, value in ipairs(received_arg as {any}) do
-      util.assert(value is function())
-      table.insert(entry_points, value as function(lusc.Nursery):nil)
-   end
-
-   return entry_points
-end
-
 function lusc._Runner:_process_tasks()
    local tasks = self._tasks
 
@@ -881,11 +886,7 @@ function lusc._Runner:_process_tasks()
          local wait_delta = tasks[#tasks]._wait_until - self:_get_time()
          if wait_delta > 0 then
             util.assert(self._main_nursery ~= nil)
-            local entry_points = self:_yield_to_user(wait_delta)
-
-            for _, entry_point in ipairs(entry_points) do
-               self._main_nursery:start_soon(util.partial_func1(entry_point, self._main_nursery))
-            end
+            self._sleep_handler(wait_delta)
          end
       end
 
@@ -930,36 +931,24 @@ function lusc._Runner:_process_tasks()
    end
 end
 
-function lusc._Runner:_run()
-   while not self._requested_quit do
-      local entry_points = self:_yield_to_user(lusc.NO_MORE_TASKS_SIGNAL)
-
-      if #entry_points > 0 then
-         util.assert(self._main_task == nil)
+function lusc._Runner:_run(entry_point:function(lusc.Nursery):nil)
+   self._main_task = self:_create_new_task_and_schedule(function()
+      self:_open_and_close_nursery(function(nursery:lusc.Nursery)
          util.assert(self._main_nursery == nil)
+         self._main_nursery = nursery
+         nursery:start_soon(util.partial_func1(entry_point, nursery))
+      end)
+   end)
 
-         self._main_task = self:_create_new_task_and_schedule(function()
-            self:_open_nursery(function(nursery:lusc.Nursery)
-               util.assert(self._main_nursery == nil)
-               self._main_nursery = nursery
+   self:_process_tasks()
 
-               for _, entry_point in ipairs(entry_points) do
-                  nursery:start_soon(util.partial_func1(entry_point, nursery))
-               end
-            end)
-         end)
-
-         self:_process_tasks()
-
-         util.assert(#self._pending_error_tasks == 0)
-         util.assert(util.map_is_empty(self._pending_error_tasks_set))
-         util.assert(util.map_is_empty(self._tasks_by_coro))
-         util.assert(#self._tasks == 0)
-         util.assert(self._main_task._done.is_set)
-         self._main_task = nil
-         self._main_nursery = nil
-      end
-   end
+   util.assert(#self._pending_error_tasks == 0)
+   util.assert(util.map_is_empty(self._pending_error_tasks_set))
+   util.assert(util.map_is_empty(self._tasks_by_coro))
+   util.assert(#self._tasks == 0)
+   util.assert(self._main_task._done.is_set)
+   self._main_task = nil
+   self._main_nursery = nil
 end
 
 -- *********** lusc ***********
@@ -971,11 +960,11 @@ function lusc._get_runner():lusc._Runner
 end
 
 function lusc.open_nursery(handler:function(nursery:lusc.Nursery), opts:lusc.Nursery.Opts):lusc.Nursery.Result
-   return lusc._get_runner():_open_nursery(handler, opts)
+   return lusc._get_runner():_open_and_close_nursery(handler, opts)
 end
 
 -- returns fractional time in seconds from an arbitrary reference point
-function lusc.get_current_time():number
+function lusc.get_time():number
    return lusc._get_runner():_get_time()
 end
 
@@ -995,38 +984,21 @@ function lusc.new_event():lusc.Event
    return lusc._get_runner():_new_event()
 end
 
-function lusc.set_log_handler(log_handler:function(string))
-   util.set_log_handler(log_handler)
-end
-
-function lusc.run(opts:lusc.Opts):thread
+function lusc.run(opts:lusc.Opts)
    util.assert(opts ~= nil, "No options provided to lusc")
    util.assert(opts.time_provider ~= nil, "Missing value for time_provider")
+   util.assert(opts.entry_point ~= nil, "Missing value for entry_point")
 
-   util.assert(lusc._current_runner == nil, "Cannot call lusc.run from within another lusc.run")
-
-   local coro = coroutine.create(function()
-      util.assert(lusc._current_runner == nil)
-      lusc._current_runner = lusc._Runner.new(opts)
-      util.try {
-         action = function():nil
-            lusc._current_runner:_run()
-         end,
-         finally = function():nil
-            lusc._current_runner = nil
-         end
-      }
-   end)
-
-   -- Do the first resume so it hits the first yield
-   local ok, result = coroutine.resume(coro)
-
-   if not ok then
-      error(result)
-   end
-
-   util.assert(result == lusc.NO_MORE_TASKS_SIGNAL)
-   return coro
+   util.assert(lusc._current_runner == nil)
+   lusc._current_runner = lusc._Runner.new(opts)
+   util.try {
+      action = function():nil
+         lusc._current_runner:_run(opts.entry_point as function():nil)
+      end,
+      finally = function():nil
+         lusc._current_runner = nil
+      end
+   }
 end
 
 return lusc

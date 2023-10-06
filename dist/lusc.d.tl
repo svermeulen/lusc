@@ -27,6 +27,8 @@ local record lusc
    record ErrorGroup
       -- The list of all errors encountered
       errors:{any}
+
+      new:function({any}):ErrorGroup
    end
 
    -- Task = single coroutine of execution

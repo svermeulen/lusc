@@ -36,28 +36,15 @@ end
 -- For eg, you can use luv here:
 -- https://github.com/svermeulen/lusc_luv
 local function run(entry_point:function(lusc.Nursery))
-   local pending_jobs = {entry_point}
-   local coro = lusc.run {
+   lusc.run {
+      entry_point = entry_point,
       time_provider = function():number
          return os.time()
       end,
+      sleep_handler = function(seconds:number)
+         os.execute("sleep " .. tostring(seconds))
+      end,
    }
-
-   while true do
-      local ok, result = coroutine.resume(coro, pending_jobs)
-      pending_jobs = {}
-
-      if not ok then
-         error(result)
-      end
-
-      if result == lusc.NO_MORE_TASKS_SIGNAL then
-         break
-      end
-
-      local seconds = result as number
-      os.execute("sleep " .. tostring(seconds))
-   end
 end
 
 run(main)
