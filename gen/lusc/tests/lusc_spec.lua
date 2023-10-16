@@ -1,13 +1,13 @@
-require("busted")
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table; require("busted")
 
-local lusc <const> = require('lusc')
-local util <const> = require('lusc.internal.util')
-local test_async_helper <const> = require("lusc.tests.async_helper")
+local lusc = require('lusc')
+local util = require('lusc.internal.util')
+local test_async_helper = require("lusc.tests.async_helper")
 
 local test_time_interval = 1
 
-local function _is_instance(obj:any, cls:any):boolean
-   -- We use a simple class model by convention where class is __index
+local function _is_instance(obj, cls)
+
    return getmetatable(obj).__index == cls
 end
 
@@ -118,11 +118,11 @@ describe("lusc", function()
    end)
 
    it("simple nursery", function()
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          local start_time = test_async_helper.get_time()
-         local end_time:number = nil
+         local end_time = nil
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(test_time_interval)
                end_time = lusc.get_time()
@@ -134,12 +134,12 @@ describe("lusc", function()
    end)
 
    it("tasks test_async_helper.run_lusc concurrently", function()
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          local start_time = test_async_helper.get_time()
-         local end_time_1:number = nil
-         local end_time_2:number = nil
+         local end_time_1 = nil
+         local end_time_2 = nil
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(test_time_interval)
                end_time_1 = lusc.get_time()
@@ -171,10 +171,10 @@ describe("lusc", function()
    end)
 
    it("simple event usage", function()
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          local start_time = test_async_helper.get_time()
          local num_completed = 0
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             local event = lusc.new_event()
             util.assert(not event.is_set)
             nursery:start_soon(function()
@@ -201,13 +201,13 @@ describe("lusc", function()
    end)
 
    it("task order matches creation order when at same time", function()
-      -- In this example, task 1 is created first, but task 2 is scheduled first
-      -- and therefore task 2 should take precedence next event loop
+
+
       test_async_helper.run_lusc(function()
          local complete_order = {}
          local schedule_order = {}
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             local start_time = test_async_helper.get_time()
             local stop_time = start_time + test_time_interval
 
@@ -235,13 +235,13 @@ describe("lusc", function()
 
    it("errors cancel other tasks", function()
       local start_time = test_async_helper.get_time()
-      local received_error:any = nil
+      local received_error = nil
       local child_2_finished = false
 
-      util.try {
-         action = function():nil
-            test_async_helper.run_lusc(function() 
-               lusc.open_nursery(function(nursery:lusc.Nursery)
+      util.try({
+         action = function()
+            test_async_helper.run_lusc(function()
+               lusc.open_nursery(function(nursery)
                   nursery:start_soon(function()
                      lusc.await_sleep(test_time_interval)
                      error('oops')
@@ -253,10 +253,10 @@ describe("lusc", function()
                end)
             end)
          end,
-         catch = function(err:any):nil
+         catch = function(err)
             received_error = err
-         end
-      }
+         end,
+      })
 
       local elapsed = test_async_helper.get_time() - start_time
       util.assert(received_error ~= nil)
@@ -267,15 +267,15 @@ describe("lusc", function()
    it("disallow use not under a lusc.test_async_helper.run_lusc", function()
       util.assert_throws(function() lusc.await_sleep(test_time_interval) end)
       util.assert_throws(function() lusc.await_until(test_async_helper.get_time() + test_time_interval) end)
-      util.assert_throws(function() lusc.open_nursery(function(_:lusc.Nursery) end) end)
+      util.assert_throws(function() lusc.open_nursery(function(_) end) end)
    end)
 
    it("explicit cancel ends sub tasks", function()
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          local start_time = test_async_helper.get_time()
          local child_2_finished = false
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(test_time_interval)
                nursery.cancel_scope:cancel()
@@ -292,11 +292,11 @@ describe("lusc", function()
    end)
 
    it("explicit cancel ends direct waits", function()
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          local start_time = test_async_helper.get_time()
          local child_2_finished = false
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(test_time_interval)
                nursery.cancel_scope:cancel()
@@ -313,13 +313,13 @@ describe("lusc", function()
    it("nested nurseries", function()
       local start_time = test_async_helper.get_time()
 
-      -- Should only take test_time_interval since
-      -- adding to the outer nursery should not block inner
-      -- nursery from closing
-      test_async_helper.run_lusc(function() 
-         lusc.open_nursery(function(nursery1:lusc.Nursery)
+
+
+
+      test_async_helper.run_lusc(function()
+         lusc.open_nursery(function(nursery1)
             nursery1:start_soon(function()
-               lusc.open_nursery(function(_:lusc.Nursery)
+               lusc.open_nursery(function(_)
                   nursery1:start_soon(function()
                      lusc.await_sleep(test_time_interval)
                   end)
@@ -336,15 +336,15 @@ describe("lusc", function()
    it("parent nursery cancels child nurseries", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
-         lusc.open_nursery(function(nursery1:lusc.Nursery) -- n1.n2
-            nursery1:start_soon(function() -- t0.t1
+      test_async_helper.run_lusc(function()
+         lusc.open_nursery(function(nursery1)
+            nursery1:start_soon(function()
                lusc.await_sleep(test_time_interval)
                nursery1.cancel_scope:cancel()
             end)
 
-            lusc.open_nursery(function(nursery2:lusc.Nursery) -- n1.n2.n3
-               nursery2:start_soon(function() -- t0.t2
+            lusc.open_nursery(function(nursery2)
+               nursery2:start_soon(function()
                   lusc.await_sleep(test_time_interval * 3)
                end)
             end)
@@ -358,8 +358,8 @@ describe("lusc", function()
    it("timeouts cancel sub tasks", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+      test_async_helper.run_lusc(function()
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(3 * test_time_interval)
             end)
@@ -373,7 +373,7 @@ describe("lusc", function()
    it("move on after", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          lusc.open_nursery(function()
             lusc.await_sleep(3 * test_time_interval)
          end, { move_on_after = test_time_interval })
@@ -386,7 +386,7 @@ describe("lusc", function()
    it("move on at", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          lusc.open_nursery(function()
             lusc.await_sleep(3 * test_time_interval)
          end, { move_on_at = start_time + test_time_interval })
@@ -400,7 +400,7 @@ describe("lusc", function()
       local start_time = test_async_helper.get_time()
 
       util.assert_throws(function()
-         test_async_helper.run_lusc(function() 
+         test_async_helper.run_lusc(function()
             lusc.open_nursery(function()
                lusc.await_sleep(3 * test_time_interval)
             end, { fail_after = test_time_interval })
@@ -415,7 +415,7 @@ describe("lusc", function()
       local start_time = test_async_helper.get_time()
 
       util.assert_throws(function()
-         test_async_helper.run_lusc(function() 
+         test_async_helper.run_lusc(function()
             lusc.open_nursery(function()
                lusc.await_sleep(3 * test_time_interval)
             end, { fail_at = start_time + test_time_interval })
@@ -429,17 +429,17 @@ describe("lusc", function()
    it("awaiting after cancel triggers cancel again", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          lusc.open_nursery(function()
-            util.try {
-               action = function():nil
+            util.try({
+               action = function()
                   lusc.await_sleep(test_time_interval * 2)
                end,
                finally = function()
-                  -- This should immediately get cancelled again
+
                   lusc.await_sleep(3 * test_time_interval)
                end,
-            }
+            })
          end, { move_on_after = test_time_interval })
       end)
 
@@ -450,10 +450,10 @@ describe("lusc", function()
    it("move on after cancels further wait attempts after error", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          lusc.open_nursery(function()
-            util.try {
-               action = function():nil
+            util.try({
+               action = function()
                   lusc.await_sleep(2 * test_time_interval)
                end,
                finally = function()
@@ -461,7 +461,7 @@ describe("lusc", function()
                      lusc.await_sleep(2 * test_time_interval)
                   end)
                end,
-            }
+            })
          end, { move_on_after = test_time_interval })
       end)
 
@@ -471,14 +471,14 @@ describe("lusc", function()
 
    it("await send blocks", function()
       test_async_helper.run_lusc(function()
-         local function measure_time(func:function()):number
+         local function measure_time(func)
             local start = lusc.get_time()
             func()
             return lusc.get_time() - start
          end
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
-            local channel:lusc.Channel<integer> = lusc.open_channel(1)
+         lusc.open_nursery(function(nursery)
+            local channel = lusc.open_channel(1)
 
             nursery:start_soon(function()
                local value, is_done = channel:await_receive_next()
@@ -513,12 +513,12 @@ describe("lusc", function()
          local received_values = {}
          local num_entries = 5
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
-            local channel:lusc.Channel<integer> = lusc.open_channel()
+         lusc.open_nursery(function(nursery)
+            local channel = lusc.open_channel()
 
             nursery:start_soon(function()
                channel:close_after(function()
-                  for i=1,num_entries do
+                  for i = 1, num_entries do
                      util.log("sending %s", i)
                      channel:send(i)
                      lusc.await_sleep(0)
@@ -535,7 +535,7 @@ describe("lusc", function()
          end)
 
          util.assert(#received_values == num_entries)
-         for i=1,num_entries do
+         for i = 1, num_entries do
             util.assert(received_values[i] == i)
          end
       end)
@@ -546,12 +546,12 @@ describe("lusc", function()
          local received_values = {}
          local num_entries = 5
 
-         lusc.open_nursery(function(nursery:lusc.Nursery)
-            local channel:lusc.Channel<integer> = lusc.open_channel(2)
+         lusc.open_nursery(function(nursery)
+            local channel = lusc.open_channel(2)
 
             nursery:start_soon(function()
                channel:close_after(function()
-                  for i=1,num_entries do
+                  for i = 1, num_entries do
                      util.log("sending %s", i)
                      channel:await_send(i)
                   end
@@ -567,7 +567,7 @@ describe("lusc", function()
          end)
 
          util.assert(#received_values == num_entries)
-         for i=1,num_entries do
+         for i = 1, num_entries do
             util.assert(received_values[i] == i)
          end
       end)
@@ -575,8 +575,8 @@ describe("lusc", function()
 
    it("cannot used closed channel", function()
       test_async_helper.run_lusc(function()
-         lusc.open_nursery(function(nursery:lusc.Nursery)
-            local channel:lusc.Channel<integer> = lusc.open_channel()
+         lusc.open_nursery(function(nursery)
+            local channel = lusc.open_channel()
 
             nursery:start_soon(function()
                channel:close_after(function()
@@ -598,11 +598,11 @@ describe("lusc", function()
 
       test_async_helper.run_lusc(function()
          lusc.move_on_after(test_time_interval, function()
-            util.try {
-               action = function():nil
+            util.try({
+               action = function()
                   lusc.await_sleep(20)
                end,
-               catch = function(err:any):nil
+               catch = function(err)
                   util.log("caught and discarded err '%s'", err)
                   lusc.cancel_scope(function()
                      util.log("awaiting again")
@@ -612,7 +612,7 @@ describe("lusc", function()
                   util.log("completed shield thing")
                   lusc.await_sleep(test_time_interval)
                end,
-            }
+            })
          end)
       end)
 
@@ -625,7 +625,7 @@ describe("lusc", function()
 
       test_async_helper.run_lusc(function()
          local result = lusc.move_on_after(test_time_interval, function()
-            lusc.open_nursery(function(n1:lusc.Nursery)
+            lusc.open_nursery(function(n1)
                n1:start_soon(function()
                   lusc.await_sleep(2 * test_time_interval)
                end)
@@ -645,7 +645,7 @@ describe("lusc", function()
 
       test_async_helper.run_lusc(function()
          lusc.move_on_after(test_time_interval, function()
-            lusc.open_nursery(function(n2:lusc.Nursery)
+            lusc.open_nursery(function(n2)
                n2:start_soon(function()
                   lusc.await_sleep(3 * test_time_interval)
                end)
@@ -663,7 +663,7 @@ describe("lusc", function()
       local start_time = test_async_helper.get_time()
 
       test_async_helper.run_lusc(function()
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.await_sleep(2 * test_time_interval)
             end)
@@ -684,7 +684,7 @@ describe("lusc", function()
       local start_time = test_async_helper.get_time()
 
       test_async_helper.run_lusc(function()
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery.cancel_scope:cancel()
 
             nursery:start_soon(function()
@@ -700,10 +700,10 @@ describe("lusc", function()
    it("awaiting in a shield scope after cancel completes", function()
       local start_time = test_async_helper.get_time()
 
-      test_async_helper.run_lusc(function() 
+      test_async_helper.run_lusc(function()
          lusc.move_on_after(test_time_interval, function()
-            util.try {
-               action = function():nil
+            util.try({
+               action = function()
                   lusc.await_sleep(2 * test_time_interval)
                end,
                finally = function()
@@ -711,7 +711,7 @@ describe("lusc", function()
                      lusc.await_sleep(2 * test_time_interval)
                   end, { shielded = true })
                end,
-            }
+            })
          end)
       end)
 
@@ -723,12 +723,12 @@ describe("lusc", function()
       local start_time = test_async_helper.get_time()
 
       test_async_helper.run_lusc(function()
-         lusc.open_nursery(function(nursery:lusc.Nursery)
+         lusc.open_nursery(function(nursery)
             nursery:start_soon(function()
                lusc.cancel_scope(function()
                   lusc.await_sleep(2 * test_time_interval)
                end, { shielded = true })
-               -- This should get cancelled immediately
+
                lusc.await_sleep(test_time_interval)
             end)
 
@@ -746,17 +746,17 @@ describe("lusc", function()
 
       test_async_helper.run_lusc(function()
          lusc.move_on_after(test_time_interval, function()
-            util.try {
-               action = function():nil
+            util.try({
+               action = function()
                   lusc.await_sleep(2 * test_time_interval)
                end,
-               catch = function():nil
+               catch = function()
                   lusc.move_on_after(test_time_interval, function()
                      lusc.await_sleep(2 * test_time_interval)
                   end, { shielded = true, name = "inner scope" })
                   lusc.await_sleep(4 * test_time_interval)
                end,
-            }
+            })
             lusc.await_sleep(4 * test_time_interval)
          end, { shielded = true, name = "outer scope" })
       end)
@@ -766,10 +766,10 @@ describe("lusc", function()
    end)
 
    it("nursery forwards multiple child errors", function()
-      test_async_helper.run_lusc(function() 
-         util.try {
-            action = function():nil
-               lusc.open_nursery(function(nursery:lusc.Nursery)
+      test_async_helper.run_lusc(function()
+         util.try({
+            action = function()
+               lusc.open_nursery(function(nursery)
                   local trigger_time = lusc.get_time() + test_time_interval
 
                   nursery:start_soon(function()
@@ -785,13 +785,12 @@ describe("lusc", function()
                   end)
                end)
             end,
-            catch = function(err:lusc.ErrorGroup):nil
+            catch = function(err)
                local err_str = tostring(err)
                util.assert(err_str:find('oops1') ~= nil)
                util.assert(err_str:find('oops2') ~= nil)
             end,
-         }
+         })
       end)
    end)
 end)
-

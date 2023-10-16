@@ -1,323 +1,323 @@
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local assert = _tl_compat and _tl_compat.assert or assert; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local debug = _tl_compat and _tl_compat.debug or debug; local ipairs = _tl_compat and _tl_compat.ipairs or ipairs; local math = _tl_compat and _tl_compat.math or math; local pairs = _tl_compat and _tl_compat.pairs or pairs; local string = _tl_compat and _tl_compat.string or string; local table = _tl_compat and _tl_compat.table or table
 
--- Design notes:
--- We basically just copy the design of trio with a few minor differences (no cancel scopes and instead we just use more nurseries)
--- https://trio.readthedocs.io/en/stable/reference-core.html#general-principles
--- This means:
--- * All operations either produce a checkpoint or they do not.  They do not sometimes yield depending on runtime state.  This is important because users sometimes have to reason about when yields occur.  One exception to this rule is when errors occur.  In this case the operation may immediately raise the error without a yield
 
--- Also this started based on the code from this great series here:
--- https://gist.github.com/belm0/4c6d11f47ccd31a231cde04616d6bb22
 
-local util <const> = require("lusc.internal.util")
-local Queue <const> = require("lusc.internal.queue")
+
+
+
+
+
+
+local util = require("lusc.internal.util")
+local Queue = require("lusc.internal.queue")
 
 local task_counter = 0
 local nursery_counter = 0
 local cancel_scope_counter = 0
 
-local _TASK_PAUSE = setmetatable({}, {__tostring=function():string return '<task_pause>' end})
-local _NO_ERROR = setmetatable({}, {__tostring=function():string return '<no_error>' end})
+local _TASK_PAUSE = setmetatable({}, { __tostring = function() return '<task_pause>' end })
+local _NO_ERROR = setmetatable({}, { __tostring = function() return '<no_error>' end })
 
-local record ChannelImpl<T>
-   _runner:lusc._Runner
-   _waiting_receive_tasks:Queue<lusc.Task>
-   _waiting_send_tasks:Queue<lusc.Task>
-   _buffer:Queue<T>
-   _is_closed:boolean
-   _max_buffer_size:integer
+local ChannelImpl = {}
 
-   await_send:function(ChannelImpl<T>, value:T)
-   send:function(ChannelImpl<T>, value:T)
 
-   await_receive_next:function(ChannelImpl<T>):T, boolean
-   await_receive_all:function(ChannelImpl<T>):function():T
 
-   receive_next:function(ChannelImpl<T>):T, boolean
 
-   close:function(ChannelImpl<T>)
-   close_after:function(ChannelImpl<T>, function())
-end
 
-local record lusc
-   record Scheduler
-      schedule:function(Scheduler, delay_seconds:number, callback:function())
-      dispose:function(Scheduler)
-   end
 
-   record DefaultScheduler
-      _step_timer:uv.Timer
 
-      schedule:function(DefaultScheduler, delay_seconds:number, callback:function())
-      dispose:function(DefaultScheduler)
 
-      new:function():DefaultScheduler
-   end
 
-   record Channel<T>
-      --- Only needed when there is a buffer max size
-      -- @return true if the receiving side is closed, in which
-      -- case there is no need to send any more values
-      await_send:function(Channel<T>, value:T)
 
-      --- raises an error if the buffer is full
-      -- @return true if the receiving side is closed, in which
-      -- case there is no need to send any more values
-      send:function(Channel<T>, value:T)
 
-      --- @return true if both the sending side is closed and there are no more
-      -- @return received value
-      -- values to receive
-      await_receive_next:function(Channel<T>):T, boolean
 
-      --- Receives all values, until sender is closed
-      await_receive_all:function(Channel<T>):function():T
 
-      --- raises an error if nothing is there to receive
-      -- @return received value
-      -- @return true if both the sending side is closed and there are no more
-      -- values to receive
-      receive_next:function(Channel<T>):T, boolean
 
-      --- Indicates that the sender has completed and receiver can end
-      close:function(Channel<T>)
 
-      -- Just calls close() after the given function completes
-      close_after:function(Channel<T>, function())
-   end
 
-   record Opts
-      -- Default: false
-      generate_debug_names:boolean
 
-      -- should returns fractional time in seconds from an arbitrary reference point
-      time_provider:function():number
-      sleep_handler:function(seconds:number)
-      entry_point:function(Nursery)
-      deadline: DeadlineOpts
-   end
 
-   record ErrorGroup
-      errors:{any}
-      new:function({any}):ErrorGroup
-   end
 
-   record Task
-      record Opts
-         name:string
-      end
+local lusc = {Scheduler = {}, DefaultScheduler = {}, Channel = {}, Opts = {}, ErrorGroup = {}, Task = {Opts = {}, }, Event = {}, CancelledError = {}, DeadlineOpts = {}, CancelScope = {Opts = {}, ShortcutOpts = {}, Result = {}, }, Nursery = {Opts = {}, }, _Runner = {}, }
 
-      _id: integer
-      _last_schedule_time: number
-      _coro: thread
-      _nursery_owner: Nursery
-      _parent_task: Task
-      _wait_until:number
-      _done:Event
-      _is_scheduled:boolean
-      _min_shield_depth:integer
-      _is_discarded:boolean
-      _pending_errors:{any}
-      _pending_cancellation_errors:{CancelledError:boolean}
-      _opts:Opts
-      _runner:_Runner
-      _child_nursery_stack:{Nursery}
-      _cancel_scope_stack:{CancelScope}
-      -- Note: requires generate_debug_names to be set
-      _debug_task_tree:string
-      _debug_nursery_tree:string
-      _wake_for_pending_errors:boolean
 
-      parent: Task
 
-      -- Consider exposing these to users
-      -- name: string
-      -- coro: thread
-      -- parent_nursery: Nursery
-      -- child_nurseries: {Nursery}
 
-      _try_get_current_nursery:function(self: Task):Nursery
-   end
 
-   record Event
-      is_set:boolean
-      _waiting_tasks:Queue<Task>
-      _runner:_Runner
 
-      set:function(Event)
-      await:function(Event)
-   end
 
-   record CancelledError
-      _trigger_scope: CancelScope
-   end
 
-   record DeadlineOpts
-      -- note: can only set one of these
-      move_on_after:number
-      move_on_at:number
-      fail_after:number
-      fail_at:number
-   end
 
-   record CancelScope
-      record Opts
-         shielded: boolean
-         name:string
 
-         -- note: can only set one of these
-         move_on_after:number
-         move_on_at:number
-         fail_after:number
-         fail_at:number
-      end
 
-      record ShortcutOpts
-         shielded: boolean
-         name:string
-      end
 
-      record Result
-         was_cancelled: boolean
-         hit_deadline: boolean
-      end
 
-      cancel:function(CancelScope)
 
-      _old_pending_errors:{lusc.CancelledError}
-      _depth:integer
-      _default_deadline_opts:DeadlineOpts
-      _id:integer
-      _debug_name:string
-      _has_cancelled:boolean
-      _cancel_error:CancelledError
-      _children:{CancelScope}
-      _deadline_task:Task
-      _hit_deadline:boolean
-      _cancel_observers:{function(CancelledError)}
-      _runner:_Runner
-      _shielded:boolean
-      _fail_on_deadline:boolean
-      _task:Task
-      _is_running:boolean
-   end
 
-   record Nursery
-      record Opts
-         name:string
 
-         shielded: boolean
 
-         -- note: can only set one of these
-         move_on_after:number
-         move_on_at:number
-         fail_after:number
-         fail_at:number
-      end
 
-      _id: integer
-      _is_closed: boolean
-      _debug_task_tree:string
-      _debug_nursery_tree:string
-      _name: string
-      _runner:_Runner
-      _task:Task
-      _child_tasks: {Task:boolean}
-      _parent_nursery: Nursery
-      _child_nurseries: {Nursery:boolean}
 
-      cancel_scope: CancelScope
 
-      -- TODO
-      -- start:function()
 
-      start_soon:function(self: Nursery, func:function(), Task.Opts)
-   end
 
-   record _Runner
-      _tasks_by_coro: {thread:Task}
-      _task_queue: {Task} -- list sorted by wait_until, nearest time last
-      _has_started: boolean
-      _has_stopped: boolean
-      _main_nursery: Nursery
-      _main_task: Task
-      _opts: Opts
-      _is_within_task_loop:boolean
-      _root_error:ErrorGroup
-      _next_step_time:number
-      _main_nursery_deadline_opts:DeadlineOpts
 
-      _get_running_task:function(_Runner):Task
-      _try_get_running_task:function(_Runner):Task
-      _get_time:function(_Runner):number
-      _create_new_task_and_schedule:function(_Runner, func:function(), Nursery, wait_until:number, opts:Task.Opts):Task
-      _unschedule_task:function(_Runner, task:Task)
-      _await_until:function(_Runner, until_time:number)
-      _await_sleep:function(_Runner, seconds:number)
-      _await_task_rescheduled:function(_Runner)
-      _schedule_now:function(_Runner, task:Task)
-      _is_cancelled_error:function(_Runner, err:any):boolean
-      _step:function(_Runner)
-      _stop_requested:function(_Runner):boolean
-      _discard_task:function(_Runner, task:Task)
-   end
 
-   _current_runner:_Runner
 
-   open_nursery:function(handler:function(nursery:Nursery), opts:Nursery.Opts):CancelScope.Result
-   get_time:function():number
-   await_sleep:function(seconds:number)
-   await_until:function(until_time:number)
-   await_forever:function()
-   new_event:function():Event
-   run:function(opts:Opts)
 
-   -- If true, then the current code is being executed
-   -- under the lusc task loop and therefore lusc await
-   -- methods can be used
-   is_processing:function():boolean
 
-   move_on_after:function(delay_seconds:number, handler:function(scope:CancelScope), opts:CancelScope.ShortcutOpts):CancelScope.Result
-   move_on_at:function(delay_seconds:number, handler:function(scope:CancelScope), opts:CancelScope.ShortcutOpts):CancelScope.Result
-   fail_after:function(delay_seconds:number, handler:function(scope:CancelScope), opts:CancelScope.ShortcutOpts):CancelScope.Result
-   fail_at:function(delay_seconds:number, handler:function(scope:CancelScope), opts:CancelScope.ShortcutOpts):CancelScope.Result
 
-   cancel_scope:function(handler:function(scope:CancelScope), opts:CancelScope.Opts):CancelScope.Result
 
-   --- @return true if the given object is an instance of ErrorGroup
-   -- and also that it only consists of the cancelled error
-   is_cancelled_error:function(err:any):boolean
 
-   has_started:function():boolean
 
-   get_root_nursery:function():Nursery
 
-   cancel_all:function()
-   open_channel:function<T>(max_buffer_size:integer):Channel<T>
 
-   get_running_task:function():Task
-   try_get_running_task:function():Task
-end
 
--- *********** util ***********
 
-local function _remove_element<T>(list:{T}, item:T)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local function _remove_element(list, item)
    local index = util.index_of(list, item)
    util.assert(index ~= -1, "Attempted to remove item from array that does not exist in array")
    table.remove(list, index)
 end
 
-local function _is_instance(obj:any, cls:any):boolean
-   -- We use a simple class model by convention where class is __index
+local function _is_instance(obj, cls)
+
    return getmetatable(obj).__index == cls
 end
 
-local function _log(format:string, ...:any)
+local function _log(format, ...)
    if not util.is_log_enabled() then
       return
    end
 
    local current_task = lusc._current_runner:_try_get_running_task()
-   local message:string
+   local message
 
    if current_task == nil then
       message = string.format(format, ...)
@@ -328,7 +328,7 @@ local function _log(format:string, ...:any)
    util.log("[lusc] " .. message)
 end
 
-local function _binary_search<T>(items:{T}, item:T, comparator:function(T, T):integer):integer
+local function _binary_search(items, item, comparator)
    local low = 1
    local high = #items
 
@@ -348,29 +348,29 @@ local function _binary_search<T>(items:{T}, item:T, comparator:function(T, T):in
    return low
 end
 
--- *********** ChannelImpl ***********
 
-function ChannelImpl.new<T>(runner:lusc._Runner, max_buffer_size:integer):ChannelImpl<T>
+
+function ChannelImpl.new(runner, max_buffer_size)
    util.assert(max_buffer_size == nil or max_buffer_size > 0, "max_buffer_size must be nil or > 0")
 
    return setmetatable(
-      {
-         _runner = runner,
-         _max_buffer_size = max_buffer_size,
-         _is_closed = false,
-         _waiting_receive_tasks = Queue(),
-         _waiting_send_tasks = Queue(),
-         _buffer = Queue(),
-      } as ChannelImpl<T>,
-      { __index = ChannelImpl } as metatable<ChannelImpl>)
+   {
+      _runner = runner,
+      _max_buffer_size = max_buffer_size,
+      _is_closed = false,
+      _waiting_receive_tasks = Queue(),
+      _waiting_send_tasks = Queue(),
+      _buffer = Queue(),
+   },
+   { __index = ChannelImpl })
 end
 
-function ChannelImpl:await_send(value:T)
+function ChannelImpl:await_send(value)
    util.assert(not self._is_closed, "[lusc] Attempted to send on a closed send channel")
 
    if self._max_buffer_size == nil then
-      -- Follow the trio rule of always awaiting given await_ prefix
-      -- even when it isn't necessary
+
+
       self._runner:_await_sleep(0)
       self:send(value)
       return
@@ -378,7 +378,7 @@ function ChannelImpl:await_send(value:T)
 
    local has_awaited = false
 
-   local function can_send():boolean
+   local function can_send()
       return self._buffer.count < self._max_buffer_size
    end
 
@@ -390,26 +390,26 @@ function ChannelImpl:await_send(value:T)
       if not can_send() then
          self._waiting_send_tasks:enqueue(task)
 
-         util.try {
-            action = function():nil
+         util.try({
+            action = function()
                self._runner:_await_task_rescheduled()
             end,
-            catch = function(err:any):nil
-               -- Note that this may or may not remove a value,
-               -- since it could have been rescheduled normally on the receive side,
-               -- and then subsequently received a pending error
+            catch = function(err)
+
+
+
                self._waiting_send_tasks:remove_value(task)
                error(err)
-            end
-         }
+            end,
+         })
          util.assert(not self._waiting_send_tasks:contains(task))
 
          has_awaited = true
       end
 
       if can_send() then
-         -- Follow the trio rule of always awaiting given await_ prefix
-         -- even when it isn't necessary
+
+
          if has_awaited then
             self:send(value)
             return
@@ -421,7 +421,7 @@ function ChannelImpl:await_send(value:T)
    end
 end
 
-function ChannelImpl:send(value:T)
+function ChannelImpl:send(value)
    util.assert(not self._is_closed, "[lusc] Attempted to send on a closed send channel")
 
    if self._max_buffer_size ~= nil and self._buffer.count >= self._max_buffer_size then
@@ -431,10 +431,10 @@ function ChannelImpl:send(value:T)
    self._buffer:enqueue(value)
    _log("Added new value to channel buffer - waking up %s waiting tasks", self._waiting_receive_tasks.count)
 
-   -- Wake up all waiting tasks that aren't already awake
-   -- We could just wake up the first task, but it's safer to wake up all,
-   -- in case that first task errors and does not eat the new value (eg. due to pending error)
-   -- If they can't eat any values they'll just be added back to _waiting_receive_tasks
+
+
+
+
    while not self._waiting_receive_tasks:empty() do
       self._runner:_schedule_now(self._waiting_receive_tasks:dequeue())
    end
@@ -444,22 +444,22 @@ function ChannelImpl:close()
    util.assert(not self._is_closed, "Attempted to close channel twice")
    self._is_closed = true
 
-   -- Wake up all waiting tasks that aren't already awake
+
    while not self._waiting_receive_tasks:empty() do
       self._runner:_schedule_now(self._waiting_receive_tasks:dequeue())
    end
 end
 
-function ChannelImpl:close_after(func:function())
-   util.try {
-      action = func as (function():nil),
-      finally = function():nil
+function ChannelImpl:close_after(func)
+   util.try({
+      action = func,
+      finally = function()
          self:close()
-      end
-   }
+      end,
+   })
 end
 
-function ChannelImpl:await_receive_next():T, boolean
+function ChannelImpl:await_receive_next()
    local has_awaited = false
    local task = self._runner:_get_running_task()
 
@@ -472,18 +472,18 @@ function ChannelImpl:await_receive_next():T, boolean
          _log("Channel buffer is empty - awaiting for new value")
          self._waiting_receive_tasks:enqueue(task)
 
-         util.try {
-            action = function():nil
+         util.try({
+            action = function()
                self._runner:_await_task_rescheduled()
             end,
-            catch = function(err:any):nil
-               -- Note that this may or may not remove a value,
-               -- since it could have been rescheduled normally on the send side,
-               -- and then subsequently received a pending error
+            catch = function(err)
+
+
+
                self._waiting_receive_tasks:remove_value(task)
                error(err)
-            end
-         }
+            end,
+         })
          util.assert(not self._waiting_receive_tasks:contains(task))
 
          has_awaited = true
@@ -494,8 +494,8 @@ function ChannelImpl:await_receive_next():T, boolean
       end
 
       if not self._buffer:empty() then
-         -- Follow the trio rule of always awaiting given await_ prefix
-         -- even when it isn't necessary
+
+
          if has_awaited then
             return self:receive_next()
          end
@@ -506,8 +506,8 @@ function ChannelImpl:await_receive_next():T, boolean
    end
 end
 
-function ChannelImpl:await_receive_all():function():T
-   return function():T
+function ChannelImpl:await_receive_all()
+   return function()
       local value, is_done = self:await_receive_next()
       if is_done then
          return nil
@@ -517,7 +517,7 @@ function ChannelImpl:await_receive_all():function():T
    end
 end
 
-function ChannelImpl:receive_next():T, boolean
+function ChannelImpl:receive_next()
    if self._buffer:empty() then
       if self._is_closed then
          return nil, true
@@ -528,10 +528,10 @@ function ChannelImpl:receive_next():T, boolean
 
    local val = self._buffer:dequeue()
 
-   -- Wake up all tasks waiting to add more data to buffer
-   -- We could just wake up the first task, but it's safer to wake up all,
-   -- since there are various ways it could fail to fill in a new value that
-   -- other waiting tasks could have (eg. pending errors)
+
+
+
+
    while not self._waiting_send_tasks:empty() do
       self._runner:_schedule_now(self._waiting_send_tasks:dequeue())
    end
@@ -539,14 +539,14 @@ function ChannelImpl:receive_next():T, boolean
    return val, false
 end
 
--- *********** ErrorGroup ***********
 
-function lusc.ErrorGroup.new(errors:{any}):lusc.ErrorGroup
-   local adjusted_errors:{any} = {}
+
+function lusc.ErrorGroup.new(errors)
+   local adjusted_errors = {}
    local seen_map = {}
 
-   -- Duplicates are sometimes added, so remove these
-   local function add_error(err:any)
+
+   local function add_error(err)
       if seen_map[err] == nil then
          seen_map[err] = true
          table.insert(adjusted_errors, err)
@@ -555,7 +555,7 @@ function lusc.ErrorGroup.new(errors:{any}):lusc.ErrorGroup
 
    for _, err in ipairs(errors) do
       if _is_instance(err, lusc.ErrorGroup) then
-         for _, sub_error in ipairs((err as lusc.ErrorGroup).errors) do
+         for _, sub_error in ipairs((err).errors) do
             util.assert(not _is_instance(sub_error, lusc.ErrorGroup))
             add_error(sub_error)
          end
@@ -566,29 +566,29 @@ function lusc.ErrorGroup.new(errors:{any}):lusc.ErrorGroup
 
    local this = {
       errors = adjusted_errors,
-   } as lusc.ErrorGroup
+   }
 
-   return setmetatable(this, 
-      { __index = lusc.ErrorGroup, __tostring = function():string
-            local lines = {}
-            for _, err in ipairs(this.errors) do
-               table.insert(lines, tostring(err))
-            end
-            return table.concat(lines, '\n')
-         end,
-      } as metatable<lusc.ErrorGroup>)
+   return setmetatable(this,
+   { __index = lusc.ErrorGroup, __tostring = function()
+      local lines = {}
+      for _, err in ipairs(this.errors) do
+         table.insert(lines, tostring(err))
+      end
+      return table.concat(lines, '\n')
+   end,
+   })
 end
 
--- *********** Event ***********
 
-function lusc.Event.new(runner:lusc._Runner):lusc.Event
+
+function lusc.Event.new(runner)
    return setmetatable(
-      {
-         _runner = runner,
-         is_set = false,
-         _waiting_tasks = Queue(),
-      } as lusc.Event,
-      { __index = lusc.Event } as metatable<lusc.Event>)
+   {
+      _runner = runner,
+      is_set = false,
+      _waiting_tasks = Queue(),
+   },
+   { __index = lusc.Event })
 end
 
 function lusc.Event:set()
@@ -613,33 +613,33 @@ function lusc.Event:await()
       util.assert(not self._waiting_tasks:contains(task))
       self._waiting_tasks:enqueue(task)
 
-      util.try {
-         action = function():nil
+      util.try({
+         action = function()
             self._runner:_await_task_rescheduled()
          end,
-         catch = function(err:any):nil
-            -- Note that this may or may not remove a value,
-            -- since it could have been rescheduled normally due to event
-            -- being set, and then subsequently received a pending error
+         catch = function(err)
+
+
+
             self._waiting_tasks:remove_value(task)
             error(err)
-         end
-      }
+         end,
+      })
 
-      -- If it gets here then it was rescheduled from the set
+
       util.assert(not self._waiting_tasks:contains(task))
    end
 end
 
--- *********** Task ***********
 
-function lusc.Task.new(runner:lusc._Runner, task_handler:function(), nursery_owner:lusc.Nursery, opts:lusc.Task.Opts):lusc.Task
+
+function lusc.Task.new(runner, task_handler, nursery_owner, opts)
    util.assert(runner ~= nil)
    util.assert(task_handler ~= nil)
 
    task_counter = task_counter + 1
 
-   local parent_task:lusc.Task
+   local parent_task
    if nursery_owner == nil then
       parent_task = nil
    else
@@ -647,32 +647,32 @@ function lusc.Task.new(runner:lusc._Runner, task_handler:function(), nursery_own
    end
 
    return setmetatable(
-      {
-         _id = task_counter,
-         _last_schedule_time = nil,
-         _is_discarded = false,
-         _is_scheduled = false,
-         _min_shield_depth = nil,
-         _coro = coroutine.create(task_handler),
-         _nursery_owner = nursery_owner, -- null for root task
-         _parent_task = parent_task,
+   {
+      _id = task_counter,
+      _last_schedule_time = nil,
+      _is_discarded = false,
+      _is_scheduled = false,
+      _min_shield_depth = nil,
+      _coro = coroutine.create(task_handler),
+      _nursery_owner = nursery_owner,
+      _parent_task = parent_task,
 
-         -- Use a separate field here to make it read only
-         parent = parent_task,
 
-         _wait_until = nil,
-         _done = lusc.Event.new(runner),
-         _pending_errors = {},
-         _pending_cancellation_errors = {},
-         _wake_for_pending_errors = true,
-         _opts = opts or {},
-         _runner = runner,
-         _child_nursery_stack = {},
-         _cancel_scope_stack = {},
-         _debug_task_tree = nil,
-         _debug_nursery_tree = nil,
-      } as lusc.Task,
-      { __index = lusc.Task } as metatable<lusc.Task>)
+      parent = parent_task,
+
+      _wait_until = nil,
+      _done = lusc.Event.new(runner),
+      _pending_errors = {},
+      _pending_cancellation_errors = {},
+      _wake_for_pending_errors = true,
+      _opts = opts or {},
+      _runner = runner,
+      _child_nursery_stack = {},
+      _cancel_scope_stack = {},
+      _debug_task_tree = nil,
+      _debug_nursery_tree = nil,
+   },
+   { __index = lusc.Task })
 end
 
 function lusc.Task:initialize()
@@ -701,11 +701,11 @@ function lusc.Task:initialize()
    _log("Created task [%s] in nursery [%s]", self._debug_task_tree, self._debug_nursery_tree)
 end
 
-function lusc.Task:_try_get_current_nursery():lusc.Nursery
+function lusc.Task:_try_get_current_nursery()
    local stack = self._child_nursery_stack
 
    if #stack == 0 then
-      -- null for root task
+
       if self._nursery_owner == nil then
          return nil
       end
@@ -716,13 +716,13 @@ function lusc.Task:_try_get_current_nursery():lusc.Nursery
    return stack[#stack]
 end
 
-function lusc.Task:_pop_pending_errors():{any}
+function lusc.Task:_pop_pending_errors()
    local result = self._pending_errors
    self._pending_errors = {}
    return result
 end
 
-function lusc.Task:_has_pending_errors():boolean
+function lusc.Task:_has_pending_errors()
    return #self._pending_errors > 0 or not util.map_is_empty(self._pending_cancellation_errors)
 end
 
@@ -738,19 +738,19 @@ function lusc.Task:_consider_scheduling_for_pending_errors()
    end
 end
 
-function lusc.Task:_save_shielded_error(err:lusc.CancelledError)
+function lusc.Task:_save_shielded_error(err)
    util.assert(#self._cancel_scope_stack >= 1)
 
-   local scope_to_use:lusc.CancelScope
+   local scope_to_use
    local start_index = 1
 
    if err._trigger_scope._task == self then
       local originating_index = err._trigger_scope._depth + 1
-      -- Use the first shielded scope underneath the originating scope
+
       start_index = originating_index + 1
    end
 
-   for i=start_index,#self._cancel_scope_stack do
+   for i = start_index, #self._cancel_scope_stack do
       local candidate = self._cancel_scope_stack[i]
 
       if candidate._shielded then
@@ -766,7 +766,7 @@ function lusc.Task:_save_shielded_error(err:lusc.CancelledError)
    table.insert(scope_to_use._old_pending_errors, err)
 end
 
-function lusc.Task:_enqueue_cancellation_error(err:lusc.CancelledError)
+function lusc.Task:_enqueue_cancellation_error(err)
    _log("Received cancellation error (depth %s) for task [%s] (min_shield_depth %s)", err._trigger_scope._depth, self._debug_task_tree, self._min_shield_depth)
 
    if self._min_shield_depth ~= nil and (err._trigger_scope._task ~= self or err._trigger_scope._depth < self._min_shield_depth) then
@@ -781,18 +781,18 @@ function lusc.Task:_enqueue_cancellation_error(err:lusc.CancelledError)
    self:_consider_scheduling_for_pending_errors()
 end
 
-function lusc.Task:_enqueue_pending_error(err:any)
+function lusc.Task:_enqueue_pending_error(err)
    _log("Enqueued pending error %s for task %s", err, self._debug_task_tree)
    table.insert(self._pending_errors, err)
    self:_consider_scheduling_for_pending_errors()
 end
 
--- *********** CancelledError ***********
 
-function lusc.CancelledError.new(runner:lusc._Runner, trigger_scope: lusc.CancelScope):lusc.CancelledError
+
+function lusc.CancelledError.new(runner, trigger_scope)
    util.assert(trigger_scope ~= nil)
 
-   local name:string
+   local name
 
    if runner._opts.generate_debug_names then
       name = string.format("<cancelled-s%s>", trigger_scope._id)
@@ -802,16 +802,16 @@ function lusc.CancelledError.new(runner:lusc._Runner, trigger_scope: lusc.Cancel
 
    local this = {
       _trigger_scope = trigger_scope,
-   } as lusc.CancelledError
+   }
 
-   return setmetatable(this, 
-      { __index = lusc.CancelledError, __tostring = function():string return name end,
-      } as metatable<lusc.CancelledError>)
+   return setmetatable(this,
+   { __index = lusc.CancelledError, __tostring = function() return name end,
+   })
 end
 
--- *********** CancelScope ***********
 
-function lusc.CancelScope.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.CancelScope.Opts):lusc.CancelScope
+
+function lusc.CancelScope.new(runner, task, opts)
    cancel_scope_counter = cancel_scope_counter + 1
    local id = cancel_scope_counter
 
@@ -823,7 +823,7 @@ function lusc.CancelScope.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Can
       shielded = false
    end
 
-   local default_deadline_opts:lusc.DeadlineOpts = {
+   local default_deadline_opts = {
       move_on_after = opts.move_on_after,
       move_on_at = opts.move_on_at,
       fail_after = opts.fail_after,
@@ -841,30 +841,30 @@ function lusc.CancelScope.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Can
    end
 
    return setmetatable(
-      {
-         _id = id,
-         _runner = runner,
-         _task = task,
-         _debug_name = debug_name,
-         _depth = #task._cancel_scope_stack,
-         _old_pending_errors = {},
-         _default_deadline_opts = default_deadline_opts,
-         _children = {},
-         _shielded = shielded,
-         _cancel_error = nil,
-         _has_cancelled = false,
-         _hit_deadline = false,
-         _deadline_task = nil,
-         _cancel_observers = {},
-         _fail_on_deadline = false,
-         _is_running = false,
-      } as lusc.CancelScope,
-      { __index = lusc.CancelScope } as metatable<lusc.CancelScope>)
+   {
+      _id = id,
+      _runner = runner,
+      _task = task,
+      _debug_name = debug_name,
+      _depth = #task._cancel_scope_stack,
+      _old_pending_errors = {},
+      _default_deadline_opts = default_deadline_opts,
+      _children = {},
+      _shielded = shielded,
+      _cancel_error = nil,
+      _has_cancelled = false,
+      _hit_deadline = false,
+      _deadline_task = nil,
+      _cancel_observers = {},
+      _fail_on_deadline = false,
+      _is_running = false,
+   },
+   { __index = lusc.CancelScope })
 end
 
-function lusc.CancelScope:_try_get_deadline_info(opts:lusc.DeadlineOpts):number, boolean
-   local deadline:number
-   local fail_on_deadline:boolean
+function lusc.CancelScope:_try_get_deadline_info(opts)
+   local deadline
+   local fail_on_deadline
 
    if opts.fail_at then
       util.assert(opts.move_on_after == nil and opts.move_on_at == nil and opts.fail_after == nil)
@@ -889,12 +889,12 @@ function lusc.CancelScope:_try_get_deadline_info(opts:lusc.DeadlineOpts):number,
    return deadline, fail_on_deadline
 end
 
-function lusc.CancelScope:_observe_cancel_request(callback:function(lusc.CancelledError))
+function lusc.CancelScope:_observe_cancel_request(callback)
    table.insert(self._cancel_observers, callback)
 end
 
 function lusc.CancelScope:cancel()
-   -- Consider just doing a return in this case instead of assert
+
    util.assert(self._is_running, "[CancelScope] Attempted to cancel cancel scope that isn't running")
 
    if not self._has_cancelled then
@@ -913,12 +913,12 @@ function lusc.CancelScope:cancel()
    end
 end
 
-function lusc.CancelScope:_set_deadline(opts:lusc.DeadlineOpts)
+function lusc.CancelScope:_set_deadline(opts)
    util.assert(self._is_running)
    util.assert(not self._hit_deadline)
    util.assert(not self._has_cancelled)
 
-   -- If setting multiple times is necessary then we can discard the existing task and restart it
+
    util.assert(self._deadline_task == nil, "Attempted to set cancel scope deadline multiple times")
 
    local deadline, fail_on_deadline = self:_try_get_deadline_info(opts)
@@ -929,7 +929,7 @@ function lusc.CancelScope:_set_deadline(opts:lusc.DeadlineOpts)
    else
       _log("[CancelScope] Setting deadline for cancel scope [%s] to %.2f seconds from now", self._debug_name, deadline - self._runner:_get_time())
 
-      local task_name:string
+      local task_name
 
       if self._runner._opts.generate_debug_names then
          task_name = string.format("deadline-%s-%s", self._task._debug_task_tree, self._debug_name)
@@ -944,12 +944,12 @@ function lusc.CancelScope:_set_deadline(opts:lusc.DeadlineOpts)
    end
 end
 
-function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.CancelScope.Result
+function lusc.CancelScope:_run(handler)
    util.assert(not self._is_running)
    util.assert(self._task == self._runner:_get_running_task())
 
    local scope_stack = self._task._cancel_scope_stack
-   local parent:lusc.CancelScope
+   local parent
 
    if #scope_stack > 0 then
       parent = scope_stack[#scope_stack]
@@ -960,7 +960,7 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
    self._is_running = true
    _log("[CancelScope] Running cancel scope [%s]", self._debug_name)
 
-   local old_min_shield_depth:integer
+   local old_min_shield_depth
    local shielded = self._shielded
 
    if shielded then
@@ -968,7 +968,7 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
       util.assert(self._task._min_shield_depth == nil or self._task._min_shield_depth < self._depth)
       self._task._min_shield_depth = self._depth
 
-      -- Cache the pending cancellations that don't apply to this scope then restore afterwards
+
       for cancel_err, _ in pairs(self._task._pending_cancellation_errors) do
          if cancel_err._trigger_scope._depth < self._depth then
             table.insert(self._old_pending_errors, cancel_err)
@@ -976,12 +976,12 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
          end
       end
 
-      -- This shouldn't be possible since they should always be popped before
-      -- running our task
+
+
       util.assert(#self._task._pending_errors == 0)
 
-      -- We might already have a cancel error enqueued, causing a schedule,
-      -- so need to undo that
+
+
       if self._task._is_scheduled then
          self._runner:_unschedule_task(self._task)
       end
@@ -989,22 +989,22 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
 
    self:_set_deadline(self._default_deadline_opts)
 
-   util.try {
-      action = function():nil
+   util.try({
+      action = function()
          handler(self)
       end,
-      catch = function(errors:any):nil
+      catch = function(errors)
          if not _is_instance(errors, lusc.ErrorGroup) then
             _log("Propagating error in cancel scope [%s]: %s", self._debug_name, errors)
             error(errors)
          end
 
-         local error_group = errors as lusc.ErrorGroup
-         local self_err:lusc.CancelledError
+         local error_group = errors
+         local self_err
 
          for _, err in ipairs(error_group.errors) do
             if _is_instance(err, lusc.CancelledError) then
-               local cancel_err = err as lusc.CancelledError
+               local cancel_err = err
                if cancel_err._trigger_scope == self then
                   util.assert(self_err == nil)
                   self_err = cancel_err
@@ -1023,7 +1023,7 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
             error(error_group)
          end
       end,
-      finally = function():nil
+      finally = function()
          self._is_running = false
 
          if shielded then
@@ -1056,7 +1056,7 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
             end
          end
       end,
-   }
+   })
 
    if self._hit_deadline and self._fail_on_deadline then
       error("Lusc cancel scope reached given failure deadline")
@@ -1070,9 +1070,9 @@ function lusc.CancelScope:_run(handler:function(scope:lusc.CancelScope)):lusc.Ca
    }
 end
 
--- *********** Nursery ***********
 
-function lusc.Nursery.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Nursery.Opts):lusc.Nursery
+
+function lusc.Nursery.new(runner, task, opts)
    util.assert(task ~= nil)
 
    nursery_counter = nursery_counter + 1
@@ -1097,28 +1097,28 @@ function lusc.Nursery.new(runner:lusc._Runner, task:lusc.Task, opts:lusc.Nursery
    end
 
    return setmetatable(
-      {
-         _id = nursery_counter,
-         _runner = runner,
-         _task = task,
-         _name = name,
-         _child_tasks = {},
-         _child_nurseries = {},
-         _cancel_requested = false,
-         _cancel_requested_from_deadline = false,
-         _debug_task_tree = task._debug_task_tree,
-         _deadline = nil,
-         _is_closed = false,
-         _should_fail_on_deadline = nil,
-         _deadline_task = nil,
-         _debug_nursery_tree = nil,
-         _parent_nursery = nil,
-         cancel_scope = lusc.CancelScope.new(runner, task, cancel_scope_opts),
-      } as lusc.Nursery,
-      { __index = lusc.Nursery } as metatable<lusc.Nursery>)
+   {
+      _id = nursery_counter,
+      _runner = runner,
+      _task = task,
+      _name = name,
+      _child_tasks = {},
+      _child_nurseries = {},
+      _cancel_requested = false,
+      _cancel_requested_from_deadline = false,
+      _debug_task_tree = task._debug_task_tree,
+      _deadline = nil,
+      _is_closed = false,
+      _should_fail_on_deadline = nil,
+      _deadline_task = nil,
+      _debug_nursery_tree = nil,
+      _parent_nursery = nil,
+      cancel_scope = lusc.CancelScope.new(runner, task, cancel_scope_opts),
+   },
+   { __index = lusc.Nursery })
 end
 
-function lusc.Nursery:_cancel_sub_tasks(err:lusc.CancelledError)
+function lusc.Nursery:_cancel_sub_tasks(err)
    util.assert(not self._is_closed, "Attempted to cancel closed nursery [%s]", self._debug_nursery_tree)
    _log("Cancelling all sub tasks in nursery [%s]", self._debug_nursery_tree)
 
@@ -1156,14 +1156,14 @@ function lusc.Nursery:initialize()
       self._debug_nursery_tree = self._name
    end
 
-   self.cancel_scope:_observe_cancel_request(function(err:lusc.CancelledError)
+   self.cancel_scope:_observe_cancel_request(function(err)
       self:_cancel_sub_tasks(err)
    end)
 
    _log("Created new nursery [%s]", self._debug_nursery_tree)
 end
 
-function lusc.Nursery:start_soon(task_handler:function(), opts:lusc.Task.Opts)
+function lusc.Nursery:start_soon(task_handler, opts)
    if self.cancel_scope._has_cancelled then
       _log("Attempted to start new task in nursery [%s] after it was already cancelled - ignoring request", self._debug_nursery_tree)
       return
@@ -1175,7 +1175,7 @@ function lusc.Nursery:start_soon(task_handler:function(), opts:lusc.Task.Opts)
    self._child_tasks[task] = true
 end
 
-function lusc.Nursery:close(nursery_err:any):lusc.CancelScope.Result
+function lusc.Nursery:close(nursery_err)
    util.assert(not self._is_closed)
    util.assert(self._task == self._runner:_get_running_task())
 
@@ -1191,18 +1191,18 @@ function lusc.Nursery:close(nursery_err:any):lusc.CancelScope.Result
       end
    end
 
-   -- In some cases we can already be scheduled for the next event loop
-   -- (eg. our cancel scope is cancelled just before the nursery is closed)
-   -- We don't want to wake up though except when all our sub tasks are done,
-   -- so need to unschedule ourselves here, then use _wake_for_pending_errors flag
-   -- to protect against getting scheduled again
+
+
+
+
+
    if self._task._is_scheduled then
       self._runner:_unschedule_task(self._task)
    end
 
-   -- Block this task using wake_for_pending_errors flag until 
-   -- all child tasks done. Defer any exceptions until after all 
-   -- children are done
+
+
+
    util.assert(self._task._wake_for_pending_errors)
    self._task._wake_for_pending_errors = false
 
@@ -1212,25 +1212,25 @@ function lusc.Nursery:close(nursery_err:any):lusc.CancelScope.Result
       table.insert(all_errors, nursery_err)
    end
 
-   -- Note that the task loop will call cancel() for us here when one of these child tasks fail
-   -- Note also that more child tasks can be added while we are iterating over the list
+
+
    while not util.map_is_empty(self._child_tasks) do
       for child_task, _ in pairs(self._child_tasks) do
-         util.try {
-            action = function():nil
+         util.try({
+            action = function()
                _log("Nursery [%s] waiting for child task [%s] to complete...", self._debug_nursery_tree, child_task._debug_task_tree)
                child_task._done:await()
             end,
-            catch = function(child_err:any):nil
+            catch = function(child_err)
                _log("Encountered error while waiting for task [%s] to complete while closing nursery [%s].  Will propagate it. Details: '%s'\n", child_task._debug_task_tree, self._debug_nursery_tree, child_err)
                table.insert(all_errors, child_err)
             end,
-            finally = function():nil
+            finally = function()
                util.assert(child_task._done.is_set)
                util.assert(self._child_tasks[child_task] == nil)
                _log("Nursery [%s] finished waiting for child task [%s]", self._debug_nursery_tree, child_task._debug_task_tree)
             end,
-         }
+         })
       end
    end
 
@@ -1267,46 +1267,46 @@ function lusc.Nursery:close(nursery_err:any):lusc.CancelScope.Result
    _log("Successfully fully closed nursery [%s]", self._debug_nursery_tree)
 end
 
-function lusc.Nursery:_run(handler:function(lusc.Nursery)):lusc.CancelScope.Result
+function lusc.Nursery:_run(handler)
    return self.cancel_scope:_run(function()
-      local main_err:any
-      util.try {
-         action = function():nil
+      local main_err
+      util.try({
+         action = function()
             handler(self)
          end,
-         catch = function(e:any):nil
+         catch = function(e)
             _log("Received error in main function of nursery '%s': %s", self._debug_nursery_tree, e)
             self.cancel_scope:cancel()
             main_err = e
          end,
-      }
+      })
       self:close(main_err)
    end)
 end
 
--- *********** _Runner ***********
 
-function lusc._Runner.new(opts:lusc.Opts):lusc._Runner
+
+function lusc._Runner.new(opts)
    util.assert(opts ~= nil, "No options provided to lusc")
 
    return setmetatable(
-      {
-         _tasks_by_coro = {},
-         _task_queue = {},
-         _has_started = false,
-         _has_stopped = false,
-         _main_nursery = nil,
-         _main_task = nil,
-         _opts = opts,
-         _is_within_task_loop = false,
-         _root_error = nil,
-         _next_step_time = nil,
-         _main_nursery_deadline_opts = nil,
-      } as lusc._Runner,
-      { __index = lusc._Runner } as metatable<lusc._Runner>)
+   {
+      _tasks_by_coro = {},
+      _task_queue = {},
+      _has_started = false,
+      _has_stopped = false,
+      _main_nursery = nil,
+      _main_task = nil,
+      _opts = opts,
+      _is_within_task_loop = false,
+      _root_error = nil,
+      _next_step_time = nil,
+      _main_nursery_deadline_opts = nil,
+   },
+   { __index = lusc._Runner })
 end
 
-function lusc._Runner:_get_time():number
+function lusc._Runner:_get_time()
    return self._opts.time_provider()
 end
 
@@ -1314,12 +1314,12 @@ function lusc._Runner:_check_errored()
    util.assert(self._root_error == nil, "lusc has already encountered an error, cannot continue.  See log above for details.")
 end
 
-function lusc._Runner:_find_task_index(task:lusc.Task):integer
-   local function comparator(left:lusc.Task, right:lusc.Task):integer
-      -- Sort first by the next run time (in decreasing order so that we can pop done tasks off the end)
-      -- then by schedule time, then by ID
-      -- This way, for tasks that have the same run time, we execute in the order they were scheduled
-      -- And by ID so that every task has one unique index, so we can do a get() easily
+function lusc._Runner:_find_task_index(task)
+   local function comparator(left, right)
+
+
+
+
 
       if left._wait_until ~= right._wait_until then
          if left._wait_until > right._wait_until then
@@ -1351,8 +1351,8 @@ function lusc._Runner:_find_task_index(task:lusc.Task):integer
    return index
 end
 
---- Note that the return value can be negative
-function lusc._Runner:_try_get_time_to_next_task():number
+
+function lusc._Runner:_try_get_time_to_next_task()
    if #self._task_queue == 0 then
       return nil
    end
@@ -1360,7 +1360,7 @@ function lusc._Runner:_try_get_time_to_next_task():number
    return self._task_queue[#self._task_queue]._wait_until - self:_get_time()
 end
 
-function lusc._Runner:_schedule_task(task:lusc.Task, new_wait_until:number)
+function lusc._Runner:_schedule_task(task, new_wait_until)
    util.assert(not task._done.is_set)
 
    local current_time = self:_get_time()
@@ -1393,26 +1393,26 @@ function lusc._Runner:_schedule_task(task:lusc.Task, new_wait_until:number)
    table.insert(self._task_queue, index, task)
 end
 
-function lusc._Runner:_schedule_now(task:lusc.Task)
+function lusc._Runner:_schedule_now(task)
    self:_schedule_task(task, self:_get_time())
 end
 
-function lusc._Runner:_try_get_running_task():lusc.Task
+function lusc._Runner:_try_get_running_task()
    return self._tasks_by_coro[coroutine.running()]
 end
 
-function lusc._Runner:_get_running_task():lusc.Task
+function lusc._Runner:_get_running_task()
    local task = self:_try_get_running_task()
    util.assert(task ~= nil, "[lusc] Unable to find running task")
    return task
 end
 
-function lusc._Runner:_checkpoint(result:any)
+function lusc._Runner:_checkpoint(result)
    local pending_error = coroutine.yield(result)
    if pending_error ~= _NO_ERROR then
       _log("Received pending error back from run loop - propagating")
-      -- NOTE: Disable prepending location to error strings, since
-      --   that already happened when the original error was raised.
+
+
       error(pending_error, 0)
    end
 end
@@ -1422,14 +1422,14 @@ function lusc._Runner:_await_task_rescheduled()
    self:_checkpoint(_TASK_PAUSE)
 end
 
-function lusc._Runner:_await_until(until_time:number)
+function lusc._Runner:_await_until(until_time)
    self:_check_errored()
    util.assert(self._is_within_task_loop)
    _log("Calling coroutine.yield to wait for %.2f seconds", until_time - self:_get_time())
    self:_checkpoint(until_time)
 end
 
-function lusc._Runner:_await_sleep(seconds:number)
+function lusc._Runner:_await_sleep(seconds)
    self:_check_errored()
    assert(seconds >= 0)
    self:_await_until(self:_get_time() + seconds)
@@ -1440,7 +1440,7 @@ function lusc._Runner:_await_forever()
    self:_await_until(math.huge)
 end
 
-function lusc._Runner:_create_new_task_and_schedule(task_handler:function(), nursery_owner:lusc.Nursery, wait_until:number, opts:lusc.Task.Opts):lusc.Task
+function lusc._Runner:_create_new_task_and_schedule(task_handler, nursery_owner, wait_until, opts)
    if wait_until == nil then
       wait_until = self:_get_time()
    end
@@ -1452,26 +1452,26 @@ function lusc._Runner:_create_new_task_and_schedule(task_handler:function(), nur
    return task
 end
 
-function lusc._Runner:_on_task_errored(task:lusc.Task, error_obj:any)
+function lusc._Runner:_on_task_errored(task, error_obj)
    if self:_is_cancelled_error(error_obj) then
-      -- For cancelled errors, we do not want to propagate it back up
-      -- All other errors though we do
+
+
       _log("Received cancelled error from task [%s]", task._debug_task_tree)
       return
    end
 
-   -- Must grab the traceback before unwinding stack for some reason
+
    local traceback = debug.traceback(task._coro)
 
    _log("Received error from task [%s]. Will propagate it. Details: %s", task._debug_task_tree, error_obj)
 
    if task == self._main_task then
       util.assert(self._root_error == nil)
-      self._root_error = lusc.ErrorGroup.new({error_obj, traceback})
+      self._root_error = lusc.ErrorGroup.new({ error_obj, traceback })
       error(self._root_error)
    else
-      -- Here, we want to propagate errors up in the task/nursery stack and then
-      -- trigger cancellation in current nursery and below
+
+
 
       local nursery = task._nursery_owner
       util.assert(nursery ~= nil)
@@ -1482,11 +1482,11 @@ function lusc._Runner:_on_task_errored(task:lusc.Task, error_obj:any)
    end
 end
 
-function lusc._Runner:_is_cancelled_error(err:any):boolean
+function lusc._Runner:_is_cancelled_error(err)
    if _is_instance(err, lusc.ErrorGroup) then
-      -- Note that the logic in ErrorGroup should guarantee that we don't 
-      -- get duplicate instances of cancelled here
-      local sub_errors = (err as lusc.ErrorGroup).errors
+
+
+      local sub_errors = (err).errors
       util.assert(#sub_errors > 0)
       for _, sub_err in ipairs(sub_errors) do
          if not _is_instance(sub_err, lusc.CancelledError) then
@@ -1499,7 +1499,7 @@ function lusc._Runner:_is_cancelled_error(err:any):boolean
    return false
 end
 
-function lusc._Runner:_discard_task(task:lusc.Task)
+function lusc._Runner:_discard_task(task)
    if task._is_discarded then
       return
    end
@@ -1521,9 +1521,9 @@ function lusc._Runner:_discard_task(task:lusc.Task)
    task._is_discarded = true
 end
 
-function lusc._Runner:_run_task(task:lusc.Task)
+function lusc._Runner:_run_task(task)
    if task._is_discarded then
-      -- TODO - how does this happen sometimes?
+
       return
    end
 
@@ -1535,7 +1535,7 @@ function lusc._Runner:_run_task(task:lusc.Task)
       table.insert(pending_errors, err)
    end
 
-   local coro_arg:any
+   local coro_arg
    if #pending_errors > 0 then
       coro_arg = lusc.ErrorGroup.new(pending_errors)
       _log("Resuming task [%s] with %s pending errors", task._debug_task_tree, #pending_errors)
@@ -1559,7 +1559,7 @@ function lusc._Runner:_run_task(task:lusc.Task)
       if resume_result == _TASK_PAUSE then
          _log("Pausing task [%s]", task._debug_task_tree)
       else
-         self:_schedule_task(task, resume_result as number)
+         self:_schedule_task(task, resume_result)
       end
 
       if not util.map_is_empty(task._pending_cancellation_errors) then
@@ -1568,7 +1568,7 @@ function lusc._Runner:_run_task(task:lusc.Task)
    end
 end
 
-function lusc._Runner:_create_nursery(opts:lusc.Nursery.Opts):lusc.Nursery
+function lusc._Runner:_create_nursery(opts)
    opts = opts or {}
 
    local current_task = self:_get_running_task()
@@ -1583,12 +1583,12 @@ function lusc._Runner:_create_nursery(opts:lusc.Nursery.Opts):lusc.Nursery
    return nursery
 end
 
-function lusc._Runner:_run_nursery(handler:function(lusc.Nursery), opts:lusc.Nursery.Opts):lusc.CancelScope.Result
+function lusc._Runner:_run_nursery(handler, opts)
    util.assert(self._is_within_task_loop)
    return self:_create_nursery(opts):_run(handler)
 end
 
-function lusc._Runner:_unschedule_task(task:lusc.Task)
+function lusc._Runner:_unschedule_task(task)
    util.assert(task._is_scheduled)
    local index = self:_find_task_index(task)
    util.assert(self._task_queue[index] == task)
@@ -1604,21 +1604,21 @@ function lusc._Runner:_process_tasks()
       local time_to_wait = self:_try_get_time_to_next_task()
 
       if time_to_wait == nil or time_to_wait > 0 then
-         -- Nothing else to do for now
+
          self._opts.sleep_handler(time_to_wait)
       end
 
       util.assert(not self._root_error)
 
-      -- Collect batch of tasks which are ready to run or have pending error
+
       local current_time = self:_get_time()
       local pending_error_tasks_to_run = {}
       local tasks_to_run = {}
 
-      -- Tasks that have the same wait_until time will be ordered by their
-      -- id, which is not ideal, but should be rare since in most cases
-      -- tasks should have a unique wait_until value
-      -- Also, id will at least order by creation time
+
+
+
+
       while #task_queue > 0 and task_queue[#task_queue]._wait_until - current_time <= 0 do
          local task = table.remove(task_queue)
          _log("Removed task [%s] from run queue", task._debug_task_tree)
@@ -1627,8 +1627,8 @@ function lusc._Runner:_process_tasks()
          task._is_scheduled = false
 
          if task:_has_pending_errors() then
-            -- Execute tasks with pending errors first since they
-            -- might cancel the other tasks, so save us some work
+
+
             table.insert(pending_error_tasks_to_run, task)
          else
             table.insert(tasks_to_run, task)
@@ -1645,7 +1645,7 @@ function lusc._Runner:_process_tasks()
    end
 end
 
-function lusc._Runner:_get_root_nursery():lusc.Nursery
+function lusc._Runner:_get_root_nursery()
    return self._main_nursery
 end
 
@@ -1653,17 +1653,17 @@ function lusc._Runner:_cancel_all()
    self._main_nursery.cancel_scope:cancel()
 end
 
-function lusc._Runner:_open_channel<T>(max_buffer_size:integer):lusc.Channel<T>
-   local impl:ChannelImpl<T> = ChannelImpl.new(self, max_buffer_size)
-   return impl as lusc.Channel<T>
+function lusc._Runner:_open_channel(max_buffer_size)
+   local impl = ChannelImpl.new(self, max_buffer_size)
+   return impl
 end
 
-function lusc._Runner:_new_event():lusc.Event
+function lusc._Runner:_new_event()
    self:_check_errored()
    return lusc.Event.new(self)
 end
 
-function lusc._Runner:_cancel_scope(handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.Opts):lusc.CancelScope.Result
+function lusc._Runner:_cancel_scope(handler, opts)
    util.assert(self._is_within_task_loop)
    local task = self:_get_running_task()
    return lusc.CancelScope.new(self, task, opts):_run(handler)
@@ -1676,7 +1676,7 @@ function lusc._Runner:_run()
    util.assert(not self._is_within_task_loop)
 
    self._main_task = self:_create_new_task_and_schedule(function()
-      self:_run_nursery(function(nursery:lusc.Nursery)
+      self:_run_nursery(function(nursery)
          util.assert(self._main_nursery == nil)
          self._main_nursery = nursery
 
@@ -1704,28 +1704,28 @@ function lusc._Runner:_run()
    self._has_stopped = true
 end
 
--- *********** lusc ***********
 
-function lusc._get_runner():lusc._Runner
+
+function lusc._get_runner()
    local result = lusc._current_runner
    util.assert(result ~= nil, "[lusc] Attempted to use lusc but it has not been started")
    return result
 end
 
-function lusc.open_nursery(handler:function(nursery:lusc.Nursery), opts:lusc.Nursery.Opts):lusc.CancelScope.Result
+function lusc.open_nursery(handler, opts)
    return lusc._get_runner():_run_nursery(handler, opts)
 end
 
--- returns fractional time in seconds from an arbitrary reference point
-function lusc.get_time():number
+
+function lusc.get_time()
    return lusc._get_runner():_get_time()
 end
 
-function lusc.await_sleep(seconds:number)
+function lusc.await_sleep(seconds)
    lusc._get_runner():_await_sleep(seconds)
 end
 
-function lusc.await_until(until_time:number)
+function lusc.await_until(until_time)
    lusc._get_runner():_await_until(until_time)
 end
 
@@ -1733,23 +1733,23 @@ function lusc.await_forever()
    lusc.await_until(math.huge)
 end
 
-function lusc.new_event():lusc.Event
+function lusc.new_event()
    return lusc._get_runner():_new_event()
 end
 
-function lusc.get_running_task():lusc.Task
+function lusc.get_running_task()
    return lusc._get_runner():_get_running_task()
 end
 
-function lusc.try_get_running_task():lusc.Task
+function lusc.try_get_running_task()
    return lusc._get_runner():_try_get_running_task()
 end
 
-function lusc.open_channel<T>(max_buffer_size:integer):lusc.Channel<T>
+function lusc.open_channel(max_buffer_size)
    return lusc._get_runner():_open_channel(max_buffer_size)
 end
 
-function lusc.stop_requested():boolean
+function lusc.stop_requested()
    return lusc._get_runner():_stop_requested()
 end
 
@@ -1757,47 +1757,47 @@ function lusc.cancel_all()
    lusc._get_runner():_cancel_all()
 end
 
-function lusc.has_started():boolean
+function lusc.has_started()
    return lusc._current_runner ~= nil
 end
 
-function lusc.is_processing():boolean
+function lusc.is_processing()
    return lusc._current_runner ~= nil and lusc._current_runner._is_within_task_loop
 end
 
-function lusc.get_root_nursery():lusc.Nursery
+function lusc.get_root_nursery()
    return lusc._get_runner():_get_root_nursery()
 end
 
-function lusc.is_cancelled_error(err:any):boolean
+function lusc.is_cancelled_error(err)
    return lusc._get_runner():_is_cancelled_error(err)
 end
 
-function lusc.cancel_scope(handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.Opts):lusc.CancelScope.Result
+function lusc.cancel_scope(handler, opts)
    return lusc._get_runner():_cancel_scope(handler, opts)
 end
 
-function lusc.move_on_after(delay_seconds:number, handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.ShortcutOpts):lusc.CancelScope.Result
+function lusc.move_on_after(delay_seconds, handler, opts)
    opts = opts or {}
    return lusc.cancel_scope(handler, { move_on_after = delay_seconds, shielded = opts.shielded, name = opts.name })
 end
 
-function lusc.move_on_at(delay_seconds:number, handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.ShortcutOpts):lusc.CancelScope.Result
+function lusc.move_on_at(delay_seconds, handler, opts)
    opts = opts or {}
    return lusc.cancel_scope(handler, { move_on_at = delay_seconds, shielded = opts.shielded, name = opts.name })
 end
 
-function lusc.fail_after(delay_seconds:number, handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.ShortcutOpts):lusc.CancelScope.Result
+function lusc.fail_after(delay_seconds, handler, opts)
    opts = opts or {}
    return lusc.cancel_scope(handler, { fail_after = delay_seconds, shielded = opts.shielded, name = opts.name })
 end
 
-function lusc.fail_at(delay_seconds:number, handler:function(scope:lusc.CancelScope), opts:lusc.CancelScope.ShortcutOpts):lusc.CancelScope.Result
+function lusc.fail_at(delay_seconds, handler, opts)
    opts = opts or {}
    return lusc.cancel_scope(handler, { fail_at = delay_seconds, shielded = opts.shielded, name = opts.name })
 end
 
-function lusc.run(opts:lusc.Opts)
+function lusc.run(opts)
    util.assert(opts ~= nil)
    util.assert(opts.time_provider ~= nil)
    util.assert(opts.sleep_handler ~= nil)
@@ -1806,15 +1806,14 @@ function lusc.run(opts:lusc.Opts)
    util.assert(lusc._current_runner == nil, "Cannot call lusc.run from within another lusc.run")
    lusc._current_runner = lusc._Runner.new(opts)
 
-   util.try {
-      action = function():nil
+   util.try({
+      action = function()
          lusc._current_runner:_run()
       end,
-      finally = function():nil
+      finally = function()
          lusc._current_runner = nil
       end,
-   }
+   })
 end
 
 return lusc
-
