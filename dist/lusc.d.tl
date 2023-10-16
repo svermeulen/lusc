@@ -1,17 +1,5 @@
 
 local record lusc
-   record Scheduler
-      schedule:function(Scheduler, delay_seconds:number, callback:function())
-      dispose:function(Scheduler)
-   end
-
-   record DefaultScheduler
-      schedule:function(DefaultScheduler, delay_seconds:number, callback:function())
-      dispose:function(DefaultScheduler)
-
-      new:function():DefaultScheduler
-   end
-
    record Channel<T>
       --- Only needed when there is a buffer max size
       -- @return true if the receiving side is closed, in which
@@ -138,16 +126,7 @@ local record lusc
    await_until:function(until_time:number)
    await_forever:function()
    new_event:function():Event
-   start:function(opts:Opts)
-
-   -- Note that this will only cancel tasks if one of the move_on* or fail_* options
-   -- are provided.  Otherwise it will wait forever for tasks to complete gracefully
-   -- Note also that if block_until_stopped is provided, it will block 
-   stop:function(opts:DeadlineOpts)
-
-   -- Long running tasks can check this periodically, and then shut down
-   -- gracefully, instead of relying on cancels
-   stop_requested:function():boolean
+   run:function(opts:Opts)
 
    -- If true, then the current code is being executed
    -- under the lusc task loop and therefore lusc await
@@ -165,12 +144,6 @@ local record lusc
    -- and also that it only consists of the cancelled error
    is_cancelled_error:function(err:any):boolean
 
-   schedule:function(handler:function(), opts:Task.Opts)
-
-   schedule_wrap: function(function(), opts:Task.Opts): function()
-   schedule_wrap: function<T>(function(T), opts:Task.Opts): function(T)
-   schedule_wrap: function<T1,T2>(function(T1, T2), opts:Task.Opts): function(T1, T2)
-
    has_started:function():boolean
 
    get_root_nursery:function():Nursery
@@ -180,8 +153,6 @@ local record lusc
 
    get_running_task:function():Task
    try_get_running_task:function():Task
-
-   set_impl:function(any)
 end
 
 return lusc
