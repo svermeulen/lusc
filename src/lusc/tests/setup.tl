@@ -1,7 +1,7 @@
 
-local lusc <const> = require('lusc')
+local util <const> = require('lusc.internal.util')
 
-lusc.set_log_handler(function(message:string)
+util.set_log_handler(function(message:string)
    print(message)
 end)
 
