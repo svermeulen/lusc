@@ -1,9 +1,4 @@
--- ***********
--- NOTE
--- This file is generated!  See main.tl for the actual source code
--- ***********
-
-local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local coroutine = _tl_compat and _tl_compat.coroutine or coroutine; local os = _tl_compat and _tl_compat.os or os
+local _tl_compat; if (tonumber((_VERSION or ''):match('[%d.]*$')) or 0) < 5.3 then local p, m = pcall(require, 'compat53.module'); if p then _tl_compat = m end end; local os = _tl_compat and _tl_compat.os or os
 local lusc = require("lusc")
 
 local function main()
