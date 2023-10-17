@@ -52,7 +52,7 @@ local function main()
 end
 ```
 
-For more complex examples please see the [lusc_luv tests here](https://github.com/svermeulen/lusc_luv/blob/main/gen/lusc_luv/tests/lusc_spec.lua).  If you're able to read through each of those tests, and understand what's going on, then you're in great shape to use Lusc in your own projects.
+For more complex examples (eg. channels) please see the [lusc_luv tests here](https://github.com/svermeulen/lusc_luv/blob/main/gen/lusc_luv/tests/lusc_spec.lua).  If you're able to read through each of those tests, and understand what's going on, then you're in great shape to use Lusc in your own projects.
 
 Running the examples
 ---
